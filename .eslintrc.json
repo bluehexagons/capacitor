@@ -1,0 +1,61 @@
+{
+  "extends": "./node_modules/gts/",
+  "rules": {
+    "no-empty": "warn",
+    "semi": [
+      "error",
+      "never",
+      {
+        "beforeStatementContinuationChars": "always"
+      }
+    ],
+    "max-len": [
+      "warn",
+      {
+        "code": 180,
+        "ignoreComments": true
+      }
+    ],
+    "no-prototype-builtins": "warn",
+    "operator-linebreak": [
+      "error",
+      "before"
+    ],
+    "@typescript-eslint/no-explicit-any": "off",
+    "@typescript-eslint/no-unused-vars": "off",
+    "@typescript-eslint/no-use-before-define": "error",
+    "@typescript-eslint/member-delimiter-style": [
+      "error",
+      {
+        "multiline": {
+          "delimiter": "none",
+          "requireLast": false
+        },
+        "singleline": {
+          "delimiter": "comma",
+          "requireLast": false
+        }
+      }
+    ],
+    "@typescript-eslint/ban-ts-comment": "off",
+    "node/no-unsupported-features/node-builtins": [
+      "error",
+      {
+        "version": ">=14.14.0",
+        "ignores": []
+      }
+    ],
+    "node/no-unsupported-features/es-builtins": [
+      "error",
+      {
+        "version": ">=14.14.0",
+        "ignores": []
+      }
+    ],
+    "no-empty-pattern": "error",
+    "no-process-exit": "warn",
+    "no-shadow": "warn",
+    "no-shadow-restricted-names": "error",
+    // "prettier/prettier": "off"
+  }
+}

@@ -16,6 +16,7 @@ describe('usage', () => {
     const client = cap.connect()
     let v = client.read(0)
     expect(v).toBe(null)
+    expect(client.size).toBe(0)
 
     let ok = client.commit(0, { value: 0 })
     expect(ok).toBe(true)
@@ -40,6 +41,8 @@ describe('usage', () => {
     expect(v?.value).toBe(0)
     v = client.read(2)
     expect(v).toBe(null)
+
+    expect(client.size).toBe(2)
   })
 
   test('server creation and use', () => {
@@ -57,9 +60,10 @@ describe('usage', () => {
     expect(ok).toBe(false)
     expect(client.cache).toBe(null)
 
-    // TODO: enable this test when future data is correctly disallowed
-    // ok = cap.read(1)
-    // expect(ok).toBe(false)
+    // test only allow reading up to size
+    ok = cap.read(1)
+    expect(ok).toBe(false)
+    expect(cap.size()).toBe(0)
 
     ok = client.commit(0, {value: 1})
     expect(ok).toBe(true)
@@ -106,5 +110,7 @@ describe('usage', () => {
     }
 
     expect(cap.read(testSize)).toBe(false)
+
+    expect(cap.size()).toBe(testSize)
   })
 })

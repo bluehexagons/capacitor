@@ -18,7 +18,17 @@ export class Client<V> {
 
   /** Returns true if no error correction necessary */
   commit(index: number, value: V): boolean {
-    // TODO: update size
+    if (index === this.size) {
+      this.size++
+
+      for (let i = this.size; i < this.commits.length; i++) {
+        if (this.commits[i] === null) {
+          break
+        }
+
+        this.size++
+      }
+    }
 
     while (this.commits.length < index + 1) {
       this.commits.push(null)
@@ -44,7 +54,7 @@ export class Client<V> {
   read(index: number): (V | null) {
     // TODO: interpolation logic will go here
     // TODO: swap length check for this.size + this.interpolate
-    return this.commits.length > index ? this.commits[index] : null
+    return this.size > index ? this.commits[index] : null
   }
 }
 
@@ -86,5 +96,14 @@ export class Capacitor<C, V> {
   clear() {
     this.clients.clear()
     this.commits = []
+  }
+
+  size() {
+    let size = 0
+    for (const client of this.clients) {
+      size = Math.max(size, client.size)
+    }
+
+    return size
   }
 }

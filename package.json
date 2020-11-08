@@ -1,7 +1,7 @@
 {
   "name": "capacitor",
-  "version": "0.0.0",
-  "description": "",
+  "version": "0.1.0",
+  "description": "Capacitor is a client/server synchronization utility written for Antistatic",
   "main": "build/src/index.js",
   "types": "build/src/index.d.ts",
   "files": [

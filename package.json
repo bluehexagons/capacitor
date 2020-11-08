@@ -10,7 +10,7 @@
   "license": "GPL-3.0",
   "keywords": [],
   "publishConfig": {
-    "registry": "https://npm.pkg.github.com/bluehexagons"
+    "registry": "https://npm.pkg.github.com"
   },
   "scripts": {
     "test": "jest",

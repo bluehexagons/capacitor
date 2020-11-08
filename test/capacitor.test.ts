@@ -13,7 +13,7 @@ const compare = (a: Packet, b: Packet) => a.value === b.value
 describe('usage', () => {
   test('client creation and use', () => {
     const cap = new Capacitor<State, Packet>(compare)
-    const client = cap.connect()
+    const client = cap.connect({})
     let v = client.read(0)
     expect(v).toBe(null)
     expect(client.size).toBe(0)
@@ -47,7 +47,7 @@ describe('usage', () => {
 
   test('server creation and use', () => {
     const cap = new Capacitor<State, Packet>(compare)
-    const client = cap.connect()
+    const client = cap.connect({})
 
     let ok = cap.read(0)
     expect(ok).toBe(false)
@@ -78,7 +78,7 @@ describe('usage', () => {
     ok = cap.read(2)
     expect(ok).toBe(false)
 
-    const client2 = cap.connect()
+    const client2 = cap.connect({})
     ok = cap.read(0)
     expect(ok).toBe(false)
 
@@ -112,5 +112,26 @@ describe('usage', () => {
     expect(cap.read(testSize)).toBe(false)
 
     expect(cap.size()).toBe(testSize)
+  })
+
+  test('frame offset clients', () => {
+    const cap = new Capacitor(compare)
+    const client1 = cap.connect({ sizeOffset: 6 })
+    const client2 = cap.connect({ sizeOffset: 10 })
+
+    for (let i = 6; i < 12; i++) {
+      if (i >= 6) {
+        client1.commit(i, { value: i })
+      }
+      if (i >= 10) {
+        client2.commit(i, { value: i })
+      }
+    }
+
+    for (let i = 10; i < 12; i++) {
+      expect(cap.read(i)).toBe(true)
+      expect(client1.cache?.value).toBe(i)
+      expect(client2.cache?.value).toBe(i)
+    }
   })
 })

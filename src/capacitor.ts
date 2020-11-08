@@ -1,10 +1,20 @@
 export type Comparator<V> = (a: V, b: V) => boolean
 
+interface ClientProps<V> {
+  comparator?: Comparator<V>
+  sizeOffset?: number
+}
+
+const defaultComparator = () => true
+
 export class Client<V> {
+  comparator: Comparator<V>
   /** How many frames to allow interpolation */
   interpolate = 0
   /** Size of buffer, minus interpolation */
   size = 0
+  /** Added to size when computing Capacitor size */
+  sizeOffset = 0
 
   /** List of all commits */
   commits: (V | null)[] = []
@@ -14,10 +24,17 @@ export class Client<V> {
 
   // TODO: is it better to store the comparator as a property,
   // or pass it from Capacitor to the commit method?
-  constructor(public comparator: Comparator<V>) { }
+  constructor({
+    comparator = defaultComparator,
+    sizeOffset = 0
+  }: ClientProps<V>) {
+    this.comparator = comparator
+    this.sizeOffset = sizeOffset
+  }
 
   /** Returns true if no error correction necessary */
-  commit(index: number, value: V): boolean {
+  commit(outerIndex: number, value: V): boolean {
+    const index = outerIndex - this.sizeOffset
     if (index === this.size) {
       this.size++
 
@@ -51,7 +68,9 @@ export class Client<V> {
     return true
   }
 
-  read(index: number): (V | null) {
+  /** returns the commit at the given index */
+  read(outerIndex: number): (V | null) {
+    const index = outerIndex - this.sizeOffset
     // TODO: interpolation logic will go here
     // TODO: swap length check for this.size + this.interpolate
     return this.size > index ? this.commits[index] : null
@@ -67,8 +86,8 @@ export class Capacitor<C, V> {
   constructor(public comparator: Comparator<V>) { }
 
   /** Create a new client */
-  connect() {
-    const client = new Client<V>(this.comparator)
+  connect(props: ClientProps<V>) {
+    const client = new Client<V>({ comparator: this.comparator, ...props })
 
     this.clients.add(client)
 
@@ -101,7 +120,7 @@ export class Capacitor<C, V> {
   size() {
     let size = 0
     for (const client of this.clients) {
-      size = Math.max(size, client.size)
+      size = Math.max(size, client.size + client.sizeOffset)
     }
 
     return size

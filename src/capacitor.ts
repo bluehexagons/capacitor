@@ -118,7 +118,12 @@ export class Capacitor<C, V> {
   }
 
   size() {
-    let size = 0
+    let size = Infinity
+
+    if (this.clients.size === 0) {
+      return 0
+    }
+
     for (const client of this.clients) {
       size = Math.min(size, client.size + client.sizeOffset)
     }

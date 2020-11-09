@@ -120,7 +120,7 @@ export class Capacitor<C, V> {
   size() {
     let size = 0
     for (const client of this.clients) {
-      size = Math.max(size, client.size + client.sizeOffset)
+      size = Math.min(size, client.size + client.sizeOffset)
     }
 
     return size

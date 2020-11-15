@@ -94,6 +94,11 @@ export class Capacitor<C, V> {
     return client
   }
 
+  /** Disconnect a client */
+  disconnect(client: Client<V>) {
+    this.clients.delete(client)
+  }
+
   /**
    * Updates client caches
    * Returns true if all clients were updated, false if any were not

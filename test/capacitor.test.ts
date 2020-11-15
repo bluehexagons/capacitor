@@ -22,6 +22,7 @@ describe('usage', () => {
     expect(ok).toBe(true)
     v = client.read(0)
     expect(v?.value).toBe(0)
+    expect(client.commits[0]?.value).toBe(0)
 
     ok = client.commit(0, { value: 1 })
     expect(ok).toBe(false)
@@ -41,8 +42,47 @@ describe('usage', () => {
     expect(v?.value).toBe(0)
     v = client.read(2)
     expect(v).toBe(null)
-
     expect(client.size).toBe(2)
+
+    ok = client.commit(4, { value: 4 })
+    expect(ok).toBe(true)
+    v = client.read(2)
+    expect(v).toBe(null)
+    expect(client.size).toBe(2)
+
+    ok = client.commit(3, { value: 3 })
+    expect(ok).toBe(true)
+    ok = client.commit(2, { value: 2 })
+    expect(ok).toBe(true)
+    expect(client.size).toBe(5)
+
+    v = client.read(2)
+    expect(v?.value).toBe(2)
+
+    v = client.read(3)
+    expect(v?.value).toBe(3)
+
+    v = client.read(4)
+    expect(v?.value).toBe(4)
+  })
+
+  test('client sizeOffset', () => {
+    const cap = new Capacitor<State, Packet>(compare)
+    const client = cap.connect({ sizeOffset: 5 })
+    expect(client.sizeOffset).toBe(5)
+
+    let ok = client.commit(5, { value: 5 })
+    expect(ok).toBe(true)
+    let v = client.read(5)
+    expect(v?.value).toBe(5)
+
+    ok = client.commit(6, { value: 6 })
+    expect(ok).toBe(true)
+    v = client.read(6)
+    expect(v?.value).toBe(6)
+    expect(client.size).toBe(2)
+
+    expect(client.commits[0]?.value).toBe(5)
   })
 
   test('server creation and use', () => {

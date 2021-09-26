@@ -1,3 +1,1 @@
-import * as Capacitor from './capacitor'
-
-export = Capacitor
+export * from './capacitor'

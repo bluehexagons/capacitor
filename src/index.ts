@@ -1,1 +1,1 @@
-export * from './capacitor'
+export * from './capacitor.js'

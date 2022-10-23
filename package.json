@@ -6,7 +6,7 @@
   "license": "GPL-3.0",
   "main": "build/src/index.js",
   "name": "@bluehexagons/capacitor",
-  "version": "0.3.2-5",
+  "version": "0.3.3-0",
   "types": "build/src/index.d.ts",
   "type": "module",
   "files": [

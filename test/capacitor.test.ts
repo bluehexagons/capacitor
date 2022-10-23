@@ -1,4 +1,4 @@
-import { Capacitor } from '../src/capacitor'
+import { Capacitor } from '../src/capacitor.js'
 
 interface State {
   text: string

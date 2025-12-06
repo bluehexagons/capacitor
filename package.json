@@ -2,7 +2,14 @@
   "author": "bluehexagons",
   "description": "Capacitor is a client/server synchronization utility written for Antistatic",
   "homepage": "https://github.com/bluehexagons/capacitor#readme",
-  "keywords": [],
+  "keywords": [
+    "synchronization",
+    "client-server",
+    "networking",
+    "interpolation",
+    "fifo",
+    "state-sync"
+  ],
   "license": "GPL-3.0",
   "main": "build/src/index.js",
   "name": "@bluehexagons/capacitor",

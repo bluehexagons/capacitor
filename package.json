@@ -2,16 +2,32 @@
   "author": "bluehexagons",
   "description": "Capacitor is a client/server synchronization utility written for Antistatic",
   "homepage": "https://github.com/bluehexagons/capacitor#readme",
-  "keywords": [],
+  "keywords": [
+    "synchronization",
+    "client-server",
+    "networking",
+    "interpolation",
+    "fifo",
+    "state-sync"
+  ],
   "license": "GPL-3.0",
   "main": "build/src/index.js",
   "name": "@bluehexagons/capacitor",
   "version": "0.3.3-1",
   "types": "build/src/index.d.ts",
   "type": "module",
+  "exports": {
+    ".": {
+      "types": "./build/src/index.d.ts",
+      "import": "./build/src/index.js"
+    }
+  },
   "files": [
     "build/src"
   ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "scripts": {
     "test": "jest",
     "lint": "gts lint",
@@ -19,10 +35,10 @@
     "compile": "tsc --pretty",
     "watch": "tsc --watch --pretty",
     "fix": "gts fix",
-    "prepare": "npm.cmd run compile",
-    "pretest": "npm.cmd run compile",
-    "posttest": "npm.cmd run lint",
-    "prepublish": "tsc"
+    "prepare": "npm run compile",
+    "pretest": "npm run compile",
+    "posttest": "npm run lint",
+    "prepublishOnly": "npm run compile"
   },
   "publishConfig": {
     "registry": "https://npm.pkg.github.com"

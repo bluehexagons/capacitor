@@ -5,7 +5,7 @@ Capacitor is a purpose-built FIFO interpolation-friendly server-client model syn
 ## Installation
 
 ```bash
-npm install @bluehexagons/capacitor
+npm install git+https://github.com/bluehexagons/capacitor.git
 ```
 
 ## Requirements
@@ -60,6 +60,8 @@ npm run fix
 # Clean build artifacts
 npm run clean
 ```
+
+The repository includes checked-in build output under `build/src` so that Git-based installs work without requiring SSH or a package publish step.
 
 ## License
 

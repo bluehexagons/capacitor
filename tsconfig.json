@@ -1,5 +1,4 @@
 {
-  "extends": "./node_modules/gts/tsconfig-google.json",
   "compilerOptions": {
     "rootDir": ".",
     "outDir": "build",
@@ -16,15 +15,12 @@
     "lib": ["ESNext"],
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    // "preserveConstEnums": true,
+    "isolatedModules": true,
     "removeComments": true,
     "sourceMap": true,
     "strict": true,
-    "target": "ESNext"
+    "target": "ESNext",
+    "types": ["node", "jest"]
   },
-  "include": [
-    "src/**/*.ts",
-    "test/**/*.ts",
-    "jest.config.ts"
-  ]
+  "include": ["src/**/*.ts", "test/**/*.ts"]
 }

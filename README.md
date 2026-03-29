@@ -10,33 +10,33 @@ npm install git+https://github.com/bluehexagons/capacitor.git
 
 ## Requirements
 
-- Node.js >= 18.0.0
+- Node.js >= 24.0.0
 
 ## Usage
 
 ```typescript
-import { Capacitor } from '@bluehexagons/capacitor'
+import { Capacitor } from '@bluehexagons/capacitor';
 
 // Define your packet type
 interface Packet {
-  value: number
+  value: number;
 }
 
 // Create a comparator function
-const compare = (a: Packet, b: Packet) => a.value === b.value
+const compare = (a: Packet, b: Packet) => a.value === b.value;
 
 // Create a new Capacitor instance
-const cap = new Capacitor<any, Packet>(compare)
+const cap = new Capacitor<any, Packet>(compare);
 
 // Connect clients
-const client = cap.connect({})
+const client = cap.connect({});
 
 // Commit values
-client.commit(0, { value: 42 })
+client.commit(0, { value: 42 });
 
 // Read values
-const value = client.read(0)
-console.log(value) // { value: 42 }
+const value = client.read(0);
+console.log(value); // { value: 42 }
 ```
 
 ## Development
@@ -54,7 +54,7 @@ npm test
 # Lint
 npm run lint
 
-# Auto-fix linting issues
+# Auto-fix linting and formatting issues
 npm run fix
 
 # Clean build artifacts

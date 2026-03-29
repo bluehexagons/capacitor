@@ -1,62 +1,62 @@
 {
-  "author": "bluehexagons",
-  "description": "Capacitor is a client/server synchronization utility written for Antistatic",
-  "homepage": "https://github.com/bluehexagons/capacitor#readme",
-  "keywords": [
-    "synchronization",
-    "client-server",
-    "networking",
-    "interpolation",
-    "fifo",
-    "state-sync"
-  ],
-  "license": "GPL-3.0",
-  "main": "build/src/index.js",
   "name": "@bluehexagons/capacitor",
   "version": "0.3.4",
-  "types": "build/src/index.d.ts",
+  "description": "Capacitor is a client/server synchronization utility written for Antistatic",
+  "keywords": [
+    "client-server",
+    "fifo",
+    "interpolation",
+    "networking",
+    "state-sync",
+    "synchronization"
+  ],
+  "homepage": "https://github.com/bluehexagons/capacitor#readme",
+  "bugs": {
+    "url": "https://github.com/bluehexagons/capacitor/issues"
+  },
+  "license": "GPL-3.0",
+  "author": "bluehexagons",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bluehexagons/capacitor.git"
+  },
+  "directories": {
+    "test": "test"
+  },
+  "files": [
+    "build/src"
+  ],
   "type": "module",
+  "main": "build/src/index.js",
+  "types": "build/src/index.d.ts",
   "exports": {
     ".": {
       "types": "./build/src/index.d.ts",
       "import": "./build/src/index.js"
     }
   },
-  "files": [
-    "build/src"
-  ],
-  "engines": {
-    "node": ">=18.0.0"
-  },
   "scripts": {
-    "test": "jest",
-    "lint": "gts lint",
-    "clean": "gts clean",
+    "test": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js",
+    "lint": "oxlint .",
+    "format": "oxfmt --write .",
+    "fix": "oxlint --fix . && npm run format",
+    "clean": "node -e \"for (const path of ['build', 'coverage']) { try { require('node:fs').rmSync(path, { recursive: true, force: true }); } catch {} }\"",
     "compile": "tsc --pretty",
     "watch": "tsc --watch --pretty",
-    "fix": "gts fix",
     "pretest": "npm run compile",
-    "posttest": "npm run lint",
     "prepack": "npm run compile",
     "prepublishOnly": "npm run compile"
   },
   "devDependencies": {
-    "@types/jest": "^29.5.13",
-    "@types/node": "^22.7.6",
-    "gts": "^6.0.0",
-    "jest": "^29.7.0",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^25.5.0",
+    "jest": "^30.3.0",
+    "oxfmt": "^0.42.0",
+    "oxlint": "^1.57.0",
     "ts-jest": "^29.2.5",
-    "ts-node": "^10.9.2",
-    "typescript": "^5.2.2"
+    "typescript": "^6.0.2"
   },
-  "directories": {
-    "test": "test"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/bluehexagons/capacitor.git"
-  },
-  "bugs": {
-    "url": "https://github.com/bluehexagons/capacitor/issues"
+  "engines": {
+    "node": ">=24.0.0"
   }
 }

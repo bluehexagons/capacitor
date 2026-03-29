@@ -1,102 +1,99 @@
-export type Comparator<V> = (a: V, b: V) => boolean
+export type Comparator<V> = (a: V, b: V) => boolean;
 
 interface ClientProps<V> {
-  comparator?: Comparator<V>
-  sizeOffset?: number
+  comparator?: Comparator<V>;
+  sizeOffset?: number;
 }
 
-const defaultComparator = () => true
+const defaultComparator = () => true;
 
 export class Client<V> {
-  comparator: Comparator<V>
+  comparator: Comparator<V>;
   /** How many frames to allow interpolation */
-  interpolate = 0
+  interpolate = 0;
   /** Size of buffer, minus interpolation */
-  size = 0
+  size = 0;
   /** Added to size when computing Capacitor size */
-  sizeOffset = 0
+  sizeOffset = 0;
 
   /** List of all commits */
-  commits: (V | null)[] = []
+  commits: (V | null)[] = [];
 
   /** Cache current frame state */
-  cache: V | null = null
+  cache: V | null = null;
 
   // TODO: is it better to store the comparator as a property,
   // or pass it from Capacitor to the commit method?
-  constructor({
-    comparator = defaultComparator,
-    sizeOffset = 0
-  }: ClientProps<V>) {
-    this.comparator = comparator
-    this.sizeOffset = sizeOffset
+  constructor({ comparator = defaultComparator, sizeOffset = 0 }: ClientProps<V>) {
+    this.comparator = comparator;
+    this.sizeOffset = sizeOffset;
   }
 
   /** Returns true if no error correction necessary */
   commit(outerIndex: number, value: V): boolean {
-    const index = outerIndex - this.sizeOffset
+    const index = outerIndex - this.sizeOffset;
     if (index === this.size) {
-      this.size++
+      this.size++;
 
       for (let i = this.size; i < this.commits.length; i++) {
         if (this.commits[i] === null) {
-          break
+          break;
         }
 
-        this.size++
+        this.size++;
       }
     }
 
     while (this.commits.length < index + 1) {
-      this.commits.push(null)
+      this.commits.push(null);
     }
 
-    const before = this.commits[index]
+    const before = this.commits[index];
 
     if (before !== null) {
-      const compare = this.comparator(before, value)
+      const compare = this.comparator(before, value);
 
       if (!compare) {
-        this.commits[index] = value
+        this.commits[index] = value;
 
-        return false
+        return false;
       }
     }
 
-    this.commits[index] = value
+    this.commits[index] = value;
 
-    return true
+    return true;
   }
 
   /** returns the commit at the given index */
-  read(outerIndex: number): (V | null) {
-    const index = outerIndex - this.sizeOffset
+  read(outerIndex: number): V | null {
+    const index = outerIndex - this.sizeOffset;
     // TODO: interpolation logic will go here
     // TODO: swap length check for this.size + this.interpolate
-    return this.size > index ? this.commits[index] : null
+    return this.size > index ? this.commits[index] : null;
   }
 }
 
 export class Capacitor<C, V> {
-  commits: C[] = []
-  clients = new Set<Client<V>>()
+  commits: C[] = [];
+  clients = new Set<Client<V>>();
 
-  equality: Comparator<V> = () => false
+  equality: Comparator<V> = () => false;
 
-  constructor(public comparator: Comparator<V>) { }
+  constructor(public comparator: Comparator<V>) {}
 
   /** Create a new client */
   connect(props: ClientProps<V>) {
-    const client = new Client<V>({ comparator: this.comparator, ...props })
+    const client = new Client<V>({ comparator: this.comparator, ...props });
 
-    this.clients.add(client)
+    this.clients.add(client);
 
-    return client
+    return client;
   }
 
   /** Disconnect a client */
   disconnect(client: Client<V>) {
-    this.clients.delete(client)
+    this.clients.delete(client);
   }
 
   /**
@@ -106,33 +103,33 @@ export class Capacitor<C, V> {
    */
   read(index: number) {
     for (const client of this.clients) {
-      client.cache = client.read(index)
+      client.cache = client.read(index);
 
       if (client.cache === null) {
-        return false
+        return false;
       }
     }
 
-    return true
+    return true;
   }
 
   /** Clears clients and commits */
   clear() {
-    this.clients.clear()
-    this.commits = []
+    this.clients.clear();
+    this.commits = [];
   }
 
   size() {
-    let size = Infinity
+    let size = Infinity;
 
     if (this.clients.size === 0) {
-      return 0
+      return 0;
     }
 
     for (const client of this.clients) {
-      size = Math.min(size, client.size + client.sizeOffset)
+      size = Math.min(size, client.size + client.sizeOffset);
     }
 
-    return size
+    return size;
   }
 }

@@ -71,6 +71,11 @@ describe('usage', () => {
     const client = cap.connect({ sizeOffset: 5 });
     expect(client.sizeOffset).toBe(5);
 
+    expect(client.commit(4, { value: 4 })).toBe(false);
+    expect(client.size).toBe(0);
+    expect(client.read(4)).toBe(null);
+    expect(client.commits).toEqual([]);
+
     let ok = client.commit(5, { value: 5 });
     expect(ok).toBe(true);
     let v = client.read(5);

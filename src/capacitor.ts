@@ -32,6 +32,10 @@ export class Client<V> {
   /** Returns true if no error correction necessary */
   commit(outerIndex: number, value: V): boolean {
     const index = outerIndex - this.sizeOffset;
+    if (index < 0) {
+      return false;
+    }
+
     if (index === this.size) {
       this.size++;
 
@@ -68,6 +72,10 @@ export class Client<V> {
   /** returns the commit at the given index */
   read(outerIndex: number): V | null {
     const index = outerIndex - this.sizeOffset;
+    if (index < 0) {
+      return null;
+    }
+
     // TODO: interpolation logic will go here
     // TODO: swap length check for this.size + this.interpolate
     return this.size > index ? this.commits[index] : null;

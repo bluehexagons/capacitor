@@ -12,6 +12,9 @@ export class Client {
     }
     commit(outerIndex, value) {
         const index = outerIndex - this.sizeOffset;
+        if (index < 0) {
+            return false;
+        }
         if (index === this.size) {
             this.size++;
             for (let i = this.size; i < this.commits.length; i++) {
@@ -37,6 +40,9 @@ export class Client {
     }
     read(outerIndex) {
         const index = outerIndex - this.sizeOffset;
+        if (index < 0) {
+            return null;
+        }
         return this.size > index ? this.commits[index] : null;
     }
 }

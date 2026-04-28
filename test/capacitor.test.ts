@@ -179,4 +179,21 @@ describe('usage', () => {
       expect(client2.cache?.value).toBe(i);
     }
   });
+
+  test('read clears stale caches after a later client misses', () => {
+    const cap = new Capacitor<State, Packet>(compare);
+    const client1 = cap.connect({});
+    const client2 = cap.connect({});
+
+    expect(client1.commit(0, { value: 10 })).toBe(true);
+    expect(client2.commit(0, { value: 20 })).toBe(true);
+    expect(cap.read(0)).toBe(true);
+    expect(client1.cache?.value).toBe(10);
+    expect(client2.cache?.value).toBe(20);
+
+    expect(client1.commit(1, { value: 11 })).toBe(true);
+    expect(cap.read(1)).toBe(false);
+    expect(client1.cache?.value).toBe(11);
+    expect(client2.cache).toBe(null);
+  });
 });

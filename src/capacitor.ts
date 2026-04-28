@@ -105,20 +105,21 @@ export class Capacitor<C, V> {
   }
 
   /**
-   * Updates client caches
-   * Returns true if all clients were updated, false if any were not
-   * Short-circuits on first failed client update
+   * Updates client caches.
+   * Returns true if all clients were updated, false if any were not.
    */
   read(index: number) {
+    let ok = true;
+
     for (const client of this.clients) {
       client.cache = client.read(index);
 
       if (client.cache === null) {
-        return false;
+        ok = false;
       }
     }
 
-    return true;
+    return ok;
   }
 
   /** Clears clients and commits */

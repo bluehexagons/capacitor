@@ -63,13 +63,14 @@ export class Capacitor {
         this.clients.delete(client);
     }
     read(index) {
+        let ok = true;
         for (const client of this.clients) {
             client.cache = client.read(index);
             if (client.cache === null) {
-                return false;
+                ok = false;
             }
         }
-        return true;
+        return ok;
     }
     clear() {
         this.clients.clear();

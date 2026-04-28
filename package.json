@@ -1,6 +1,6 @@
 {
   "name": "@bluehexagons/capacitor",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "description": "Capacitor is a client/server synchronization utility written for Antistatic",
   "keywords": [
     "client-server",
@@ -43,6 +43,7 @@
     "clean": "node -e \"for (const path of ['build', 'coverage']) { try { require('node:fs').rmSync(path, { recursive: true, force: true }); } catch {} }\"",
     "compile": "tsc --pretty",
     "watch": "tsc --watch --pretty",
+    "release": "node scripts/release.mjs",
     "pretest": "npm run compile",
     "prepack": "npm run compile",
     "prepublishOnly": "npm run compile"

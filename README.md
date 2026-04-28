@@ -5,7 +5,7 @@ Capacitor is a purpose-built FIFO interpolation-friendly server-client model syn
 ## Installation
 
 ```bash
-npm install git+https://github.com/bluehexagons/capacitor.git
+npm install https://codeload.github.com/bluehexagons/capacitor/tar.gz/refs/tags/v0.3.5
 ```
 
 ## Requirements
@@ -62,6 +62,17 @@ npm run clean
 ```
 
 The repository includes checked-in build output under `build/src` so that Git-based installs work without requiring SSH or a package publish step.
+
+## Release
+
+Capacitor is consumed from GitHub tags. To release a new version:
+
+1. Update `version` in `package.json` and `package-lock.json`.
+2. Run `npm test`.
+3. Commit the version and build output changes.
+4. Run `npm run release`.
+
+The release script verifies the tracked worktree is clean, checks that `v<version>` does not already exist locally or on `origin`, reruns `npm test`, creates an annotated tag, and pushes the tag.
 
 ## License
 

@@ -1,5 +1,7 @@
 {
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["eslint"],
   "rules": {
-    "noUnusedVars": "error"
+    "no-unused-vars": "error"
   }
 }

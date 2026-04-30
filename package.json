@@ -1,6 +1,6 @@
 {
   "name": "@bluehexagons/capacitor",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "description": "Capacitor is a client/server synchronization utility written for Antistatic",
   "keywords": [
     "client-server",

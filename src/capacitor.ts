@@ -389,12 +389,21 @@ export class Capacitor<C, V> {
    * Lockstep read: returns true iff every client active at `frame` has a
    * confirmed value. Mirrors the previous boolean `read()` API and
    * updates `client.cache` for callers that scrape it.
+   *
+   * Not-yet-active clients (frame < startFrame) block the lockstep —
+   * the consumer should advance frames until late-joining controllers
+   * are caught up. Deactivated clients (frame >= endFrame) are skipped.
    */
   readConfirmed(frame: number): boolean {
     let ok = true;
     for (const client of this.clients) {
-      if (frame < client.startFrame || frame >= client.endFrame) {
+      if (frame >= client.endFrame) {
         client.cache = null;
+        continue;
+      }
+      if (frame < client.startFrame) {
+        client.cache = null;
+        ok = false;
         continue;
       }
       const status = client.frameStatus(frame);
@@ -418,6 +427,8 @@ export class Capacitor<C, V> {
   /**
    * Rollback-aware read. Returns per-client status + values + the
    * earliest dirty frame across all clients (without consuming it).
+   * Like `readConfirmed`, a not-yet-active client (frame < startFrame)
+   * blocks `complete` / `confirmed`; deactivated clients are skipped.
    */
   readDetailed(frame: number): CapacitorReadResult<V> {
     const values: (V | null)[] = [];
@@ -425,8 +436,14 @@ export class Capacitor<C, V> {
     let complete = true;
     let earliestDirty: number | null = null;
     for (const client of this.clients) {
-      if (frame < client.startFrame || frame >= client.endFrame) {
+      if (frame >= client.endFrame) {
         values.push(null);
+        continue;
+      }
+      if (frame < client.startFrame) {
+        values.push(null);
+        confirmed = false;
+        complete = false;
         continue;
       }
       const status = client.frameStatus(frame);

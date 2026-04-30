@@ -215,8 +215,13 @@ export class Capacitor {
     readConfirmed(frame) {
         let ok = true;
         for (const client of this.clients) {
-            if (frame < client.startFrame || frame >= client.endFrame) {
+            if (frame >= client.endFrame) {
                 client.cache = null;
+                continue;
+            }
+            if (frame < client.startFrame) {
+                client.cache = null;
+                ok = false;
                 continue;
             }
             const status = client.frameStatus(frame);
@@ -240,8 +245,14 @@ export class Capacitor {
         let complete = true;
         let earliestDirty = null;
         for (const client of this.clients) {
-            if (frame < client.startFrame || frame >= client.endFrame) {
+            if (frame >= client.endFrame) {
                 values.push(null);
+                continue;
+            }
+            if (frame < client.startFrame) {
+                values.push(null);
+                confirmed = false;
+                complete = false;
                 continue;
             }
             const status = client.frameStatus(frame);

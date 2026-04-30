@@ -1,28 +1,69 @@
 export type Comparator<V> = (a: V, b: V) => boolean;
+export type CommitResult = {
+    kind: 'new';
+} | {
+    kind: 'duplicate';
+} | {
+    kind: 'corrected';
+    rollbackFrame: number;
+} | {
+    kind: 'stale';
+} | {
+    kind: 'outside-window';
+} | {
+    kind: 'inactive';
+};
+export type ClientFrameStatus = 'confirmed' | 'predicted' | 'empty';
 interface ClientProps<V> {
     comparator?: Comparator<V>;
-    sizeOffset?: number;
+    startFrame?: number;
+    historyFrames?: number;
 }
 export declare class Client<V> {
     comparator: Comparator<V>;
-    interpolate: number;
-    size: number;
-    sizeOffset: number;
-    commits: (V | null)[];
+    startFrame: number;
+    endFrame: number;
+    capacity: number;
+    baseFrame: number;
+    confirmedHead: number;
+    writtenHead: number;
+    dirtyFrame: number;
+    private values;
+    private status;
     cache: V | null;
-    constructor({ comparator, sizeOffset }: ClientProps<V>);
-    commit(outerIndex: number, value: V): boolean;
-    read(outerIndex: number): V | null;
+    get size(): number;
+    get sizeOffset(): number;
+    constructor({ comparator, startFrame, historyFrames, }: ClientProps<V>);
+    deactivate(frame: number): void;
+    trimBefore(frame: number): void;
+    commit(frame: number, value: V): CommitResult;
+    predict(frame: number, value: V): CommitResult;
+    private write;
+    private ensureCapacity;
+    private advanceConfirmedHead;
+    private markDirty;
+    consumeDirty(): number | null;
+    read(frame: number): V | null;
+    frameStatus(frame: number): ClientFrameStatus;
+}
+export interface CapacitorReadResult<V> {
+    confirmed: boolean;
+    complete: boolean;
+    rollbackFrame: number | null;
+    values: (V | null)[];
 }
 export declare class Capacitor<C, V> {
     comparator: Comparator<V>;
     commits: C[];
     clients: Set<Client<V>>;
-    equality: Comparator<V>;
     constructor(comparator: Comparator<V>);
     connect(props: ClientProps<V>): Client<V>;
     disconnect(client: Client<V>): void;
-    read(index: number): boolean;
+    consumeDirty(): number | null;
+    trimBefore(frame: number): void;
+    readConfirmed(frame: number): boolean;
+    read(frame: number): boolean;
+    readDetailed(frame: number): CapacitorReadResult<V>;
     clear(): void;
     size(): number;
 }

@@ -17,27 +17,59 @@ npm install https://codeload.github.com/bluehexagons/capacitor/tar.gz/refs/tags/
 ```typescript
 import { Capacitor } from '@bluehexagons/capacitor';
 
-// Define your packet type
 interface Packet {
   value: number;
 }
 
-// Create a comparator function
 const compare = (a: Packet, b: Packet) => a.value === b.value;
 
-// Create a new Capacitor instance
-const cap = new Capacitor<any, Packet>(compare);
+const cap = new Capacitor<unknown, Packet>(compare);
+const client = cap.connect({ historyFrames: 1024 });
 
-// Connect clients
-const client = cap.connect({});
+// Confirmed wire input lands as `commit`. The result tells you whether
+// the simulation needs to roll back.
+const result = client.commit(0, { value: 42 });
+if (result.kind === 'corrected') {
+  console.log('rollback to frame', result.rollbackFrame);
+}
 
-// Commit values
-client.commit(0, { value: 42 });
+// Lockstep callers can still ask "did everyone produce frame N?".
+if (cap.readConfirmed(0)) {
+  console.log(client.cache);
+}
 
-// Read values
-const value = client.read(0);
-console.log(value); // { value: 42 }
+// Rollback drivers prefer the structured read, plus draining the
+// dirty-frame watermark across all clients.
+const detailed = cap.readDetailed(0);
+const rollback = cap.consumeDirty();
 ```
+
+## Version 0.4.x — what changed
+
+Capacitor 0.4.0 replaces the lockstep-only sparse buffer with a
+bounded ring buffer keyed by absolute frame, plus structured commit
+results so a rollback driver can react to corrections without
+inferring them from a bare boolean.
+
+- `Client.commits` / `client.size` (legacy field) → ring-buffer
+  storage. `client.size` is now a getter that reports the contiguous
+  confirmed length; `client.commits` is gone.
+- `Client.commit` returns `CommitResult`
+  (`new` / `duplicate` / `corrected` / `stale` / `outside-window` /
+  `inactive`) instead of a boolean.
+- New `Client.predict(frame, value)` writes a prediction; a matching
+  `commit` later upgrades it to confirmed without rollback, a
+  mismatching one reports `corrected` and bumps the dirty watermark.
+- New `Client.deactivate(frame)` and `endFrame` for clean disconnects.
+- New `Client.trimBefore(frame)` and `Capacitor.trimBefore(frame)`
+  for explicit window advancement.
+- New `Capacitor.readDetailed(frame)` returns per-client status; the
+  legacy `cap.read(frame)` is preserved as an alias for
+  `readConfirmed`.
+- `historyFrames` (default 1024) caps per-client memory.
+- `sizeOffset` is renamed `startFrame`; `client.sizeOffset` is kept
+  as a read-only alias. Same-version-only netplay means there is no
+  bridging shim for the old commit return type.
 
 ## Development
 

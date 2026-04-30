@@ -44,6 +44,8 @@ interface ClientProps<V> {
    * legacy `sizeOffset`.
    */
   startFrame?: number;
+  /** Legacy alias for `startFrame`; preferred name is `startFrame`. */
+  sizeOffset?: number;
   /**
    * Number of historical frames the ring buffer retains. Older frames
    * are dropped on commit / `trimBefore`. Default 1024 frames.
@@ -108,19 +110,21 @@ export class Client<V> {
 
   constructor({
     comparator = defaultComparator,
-    startFrame = 0,
+    startFrame,
+    sizeOffset,
     historyFrames = DEFAULT_HISTORY_FRAMES,
     predictor,
   }: ClientProps<V>) {
     if (historyFrames <= 0 || !Number.isFinite(historyFrames)) {
       throw new Error('historyFrames must be a positive finite integer');
     }
+    const start = startFrame ?? sizeOffset ?? 0;
     this.comparator = comparator;
-    this.startFrame = startFrame;
+    this.startFrame = start;
     this.capacity = historyFrames;
-    this.baseFrame = startFrame;
-    this.confirmedHead = startFrame;
-    this.writtenHead = startFrame;
+    this.baseFrame = start;
+    this.confirmedHead = start;
+    this.writtenHead = start;
     this.predictor = predictor ?? null;
     this.values = new Array<V | null>(historyFrames).fill(null);
     this.status = new Array<ClientFrameStatus>(historyFrames).fill('empty');

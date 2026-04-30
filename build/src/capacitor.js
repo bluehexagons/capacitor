@@ -19,16 +19,17 @@ export class Client {
     get sizeOffset() {
         return this.startFrame;
     }
-    constructor({ comparator = defaultComparator, startFrame = 0, historyFrames = DEFAULT_HISTORY_FRAMES, predictor, }) {
+    constructor({ comparator = defaultComparator, startFrame, sizeOffset, historyFrames = DEFAULT_HISTORY_FRAMES, predictor, }) {
         if (historyFrames <= 0 || !Number.isFinite(historyFrames)) {
             throw new Error('historyFrames must be a positive finite integer');
         }
+        const start = startFrame ?? sizeOffset ?? 0;
         this.comparator = comparator;
-        this.startFrame = startFrame;
+        this.startFrame = start;
         this.capacity = historyFrames;
-        this.baseFrame = startFrame;
-        this.confirmedHead = startFrame;
-        this.writtenHead = startFrame;
+        this.baseFrame = start;
+        this.confirmedHead = start;
+        this.writtenHead = start;
         this.predictor = predictor ?? null;
         this.values = new Array(historyFrames).fill(null);
         this.status = new Array(historyFrames).fill('empty');

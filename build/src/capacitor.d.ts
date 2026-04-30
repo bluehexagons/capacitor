@@ -18,6 +18,7 @@ export type Predictor<V> = (prev: V, frame: number) => V;
 interface ClientProps<V> {
     comparator?: Comparator<V>;
     startFrame?: number;
+    sizeOffset?: number;
     historyFrames?: number;
     predictor?: Predictor<V>;
 }
@@ -36,7 +37,7 @@ export declare class Client<V> {
     cache: V | null;
     get size(): number;
     get sizeOffset(): number;
-    constructor({ comparator, startFrame, historyFrames, predictor, }: ClientProps<V>);
+    constructor({ comparator, startFrame, sizeOffset, historyFrames, predictor, }: ClientProps<V>);
     deactivate(frame: number): void;
     trimBefore(frame: number): void;
     commit(frame: number, value: V): CommitResult;

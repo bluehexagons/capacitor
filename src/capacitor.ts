@@ -317,6 +317,53 @@ export class Client<V> {
       prev = predicted;
     }
   }
+
+  /**
+   * Drop predicted values at `[frame, writtenHead)`, leaving confirmed
+   * values intact. Used by rollback drivers after a `corrected` commit:
+   * the just-confirmed value at the dirty frame invalidates every
+   * downstream prediction that was built on top of the now-stale
+   * anchor, so clearing them forces `ensurePredicted` to recompute
+   * from the corrected value on the next replay pass.
+   *
+   * `writtenHead` is reset to the last frame that still holds a value
+   * after clearing so subsequent `ensurePredicted` writes extend it
+   * naturally. Slots marked `confirmed` are left untouched. Returns
+   * the number of slots cleared, primarily for tests / diagnostics.
+   */
+  invalidatePredictedFrom(frame: number): number {
+    if (frame >= this.writtenHead) return 0;
+    const start = Math.max(frame, this.baseFrame);
+    let cleared = 0;
+    let lastWritten = start - 1;
+    for (let f = start; f < this.writtenHead; f++) {
+      const slot = f % this.capacity;
+      if (this.status[slot] === 'confirmed') {
+        lastWritten = f;
+        continue;
+      }
+      if (this.status[slot] === 'predicted') {
+        this.status[slot] = 'empty';
+        this.values[slot] = null;
+        cleared++;
+      }
+    }
+    // writtenHead is exclusive of the last written frame; trim it back
+    // so future writes/predictions extend cleanly. A confirmed slot
+    // before `frame` is still in range and untouched.
+    if (lastWritten + 1 < this.writtenHead) {
+      // Walk backwards from writtenHead to find the new boundary,
+      // which is the highest non-empty slot.
+      let newHead = this.writtenHead;
+      while (newHead > start) {
+        const slot = (newHead - 1) % this.capacity;
+        if (this.status[slot] !== 'empty') break;
+        newHead--;
+      }
+      this.writtenHead = newHead;
+    }
+    return cleared;
+  }
 }
 
 export interface CapacitorReadResult<V> {
@@ -383,6 +430,16 @@ export class Capacitor<C, V> {
    */
   ensurePredicted(frame: number): void {
     for (const client of this.clients) client.ensurePredicted(frame);
+  }
+
+  /**
+   * Drop predicted values at `[frame, writtenHead)` on every client.
+   * Convenience wrapper around `Client.invalidatePredictedFrom` for
+   * rollback drivers that just consumed a dirty marker and want to
+   * recompute predictions from the corrected anchor.
+   */
+  invalidatePredictedFrom(frame: number): void {
+    for (const client of this.clients) client.invalidatePredictedFrom(frame);
   }
 
   /**

@@ -189,6 +189,54 @@ describe('Client', () => {
     expect(client.read(4)?.value).toBe(43);
     expect(client.read(5)?.value).toBe(44);
   });
+
+  test('invalidatePredictedFrom drops predictions and lets ensurePredicted recompute', () => {
+    const cap = new Capacitor<State, Packet>(compare);
+    const client = cap.connect({ predictor: (prev) => ({ value: prev.value + 1 }) });
+    client.commit(0, { value: 0 });
+    client.ensurePredicted(5);
+    // Predictions: 1..5 derived from anchor 0.
+    expect(client.read(5)?.value).toBe(5);
+    // A late-arriving confirmed correction at frame 2 invalidates 3..5.
+    const result = client.commit(2, { value: 100 });
+    expect(result.kind).toBe('corrected');
+    const cleared = client.invalidatePredictedFrom(3);
+    expect(cleared).toBe(3);
+    expect(client.frameStatus(3)).toBe('empty');
+    expect(client.frameStatus(5)).toBe('empty');
+    // Confirmed slots are preserved.
+    expect(client.read(2)?.value).toBe(100);
+    // Re-running ensurePredicted now anchors on the corrected value.
+    client.ensurePredicted(5);
+    expect(client.read(3)?.value).toBe(101);
+    expect(client.read(5)?.value).toBe(103);
+  });
+
+  test('invalidatePredictedFrom preserves confirmed slots after the boundary', () => {
+    const cap = new Capacitor<State, Packet>(compare);
+    const client = cap.connect({ predictor: (prev) => ({ value: prev.value + 1 }) });
+    client.commit(0, { value: 0 });
+    client.predict(1, { value: 11 });
+    client.commit(2, { value: 22 });
+    client.predict(3, { value: 33 });
+    client.invalidatePredictedFrom(1);
+    expect(client.frameStatus(1)).toBe('empty');
+    expect(client.frameStatus(2)).toBe('confirmed');
+    expect(client.read(2)?.value).toBe(22);
+    expect(client.frameStatus(3)).toBe('empty');
+  });
+
+  test('Capacitor.invalidatePredictedFrom delegates to every client', () => {
+    const cap = new Capacitor<State, Packet>(compare);
+    const a = cap.connect({ predictor: (prev) => ({ value: prev.value + 1 }) });
+    const b = cap.connect({ predictor: (prev) => ({ value: prev.value + 10 }) });
+    a.commit(0, { value: 0 });
+    b.commit(0, { value: 0 });
+    cap.ensurePredicted(3);
+    cap.invalidatePredictedFrom(1);
+    expect(a.frameStatus(1)).toBe('empty');
+    expect(b.frameStatus(1)).toBe('empty');
+  });
 });
 
 describe('Capacitor lockstep helpers', () => {

@@ -50,6 +50,7 @@ export declare class Client<V> {
     read(frame: number): V | null;
     frameStatus(frame: number): ClientFrameStatus;
     ensurePredicted(frame: number): void;
+    invalidatePredictedFrom(frame: number): number;
 }
 export interface CapacitorReadResult<V> {
     confirmed: boolean;
@@ -67,6 +68,7 @@ export declare class Capacitor<C, V> {
     consumeDirty(): number | null;
     trimBefore(frame: number): void;
     ensurePredicted(frame: number): void;
+    invalidatePredictedFrom(frame: number): void;
     readConfirmed(frame: number): boolean;
     read(frame: number): boolean;
     readDetailed(frame: number): CapacitorReadResult<V>;

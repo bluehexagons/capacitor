@@ -14,10 +14,12 @@ export type CommitResult = {
     kind: 'inactive';
 };
 export type ClientFrameStatus = 'confirmed' | 'predicted' | 'empty';
+export type Predictor<V> = (prev: V, frame: number) => V;
 interface ClientProps<V> {
     comparator?: Comparator<V>;
     startFrame?: number;
     historyFrames?: number;
+    predictor?: Predictor<V>;
 }
 export declare class Client<V> {
     comparator: Comparator<V>;
@@ -28,12 +30,13 @@ export declare class Client<V> {
     confirmedHead: number;
     writtenHead: number;
     dirtyFrame: number;
+    predictor: Predictor<V> | null;
     private values;
     private status;
     cache: V | null;
     get size(): number;
     get sizeOffset(): number;
-    constructor({ comparator, startFrame, historyFrames, }: ClientProps<V>);
+    constructor({ comparator, startFrame, historyFrames, predictor, }: ClientProps<V>);
     deactivate(frame: number): void;
     trimBefore(frame: number): void;
     commit(frame: number, value: V): CommitResult;
@@ -45,6 +48,7 @@ export declare class Client<V> {
     consumeDirty(): number | null;
     read(frame: number): V | null;
     frameStatus(frame: number): ClientFrameStatus;
+    ensurePredicted(frame: number): void;
 }
 export interface CapacitorReadResult<V> {
     confirmed: boolean;
@@ -61,6 +65,7 @@ export declare class Capacitor<C, V> {
     disconnect(client: Client<V>): void;
     consumeDirty(): number | null;
     trimBefore(frame: number): void;
+    ensurePredicted(frame: number): void;
     readConfirmed(frame: number): boolean;
     read(frame: number): boolean;
     readDetailed(frame: number): CapacitorReadResult<V>;

@@ -9,6 +9,7 @@ export class Client {
     confirmedHead;
     writtenHead;
     dirtyFrame = Infinity;
+    predictor;
     values;
     status;
     cache = null;
@@ -18,7 +19,7 @@ export class Client {
     get sizeOffset() {
         return this.startFrame;
     }
-    constructor({ comparator = defaultComparator, startFrame = 0, historyFrames = DEFAULT_HISTORY_FRAMES, }) {
+    constructor({ comparator = defaultComparator, startFrame = 0, historyFrames = DEFAULT_HISTORY_FRAMES, predictor, }) {
         if (historyFrames <= 0 || !Number.isFinite(historyFrames)) {
             throw new Error('historyFrames must be a positive finite integer');
         }
@@ -28,6 +29,7 @@ export class Client {
         this.baseFrame = startFrame;
         this.confirmedHead = startFrame;
         this.writtenHead = startFrame;
+        this.predictor = predictor ?? null;
         this.values = new Array(historyFrames).fill(null);
         this.status = new Array(historyFrames).fill('empty');
     }
@@ -151,6 +153,29 @@ export class Client {
             return 'empty';
         return this.status[frame % this.capacity];
     }
+    ensurePredicted(frame) {
+        if (this.predictor === null)
+            return;
+        if (frame < this.startFrame)
+            return;
+        const target = Math.min(frame, this.endFrame - 1);
+        let f = this.confirmedHead;
+        if (f > target)
+            return;
+        let prev = f > this.startFrame ? this.read(f - 1) : null;
+        for (; f <= target; f++) {
+            const slot = f % this.capacity;
+            if (this.status[slot] !== 'empty') {
+                prev = this.values[slot];
+                continue;
+            }
+            if (prev === null)
+                return;
+            const predicted = this.predictor(prev, f);
+            this.predict(f, predicted);
+            prev = predicted;
+        }
+    }
 }
 export class Capacitor {
     comparator;
@@ -181,6 +206,10 @@ export class Capacitor {
     trimBefore(frame) {
         for (const client of this.clients)
             client.trimBefore(frame);
+    }
+    ensurePredicted(frame) {
+        for (const client of this.clients)
+            client.ensurePredicted(frame);
     }
     readConfirmed(frame) {
         let ok = true;

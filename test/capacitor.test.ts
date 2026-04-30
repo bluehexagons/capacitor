@@ -131,6 +131,64 @@ describe('Client', () => {
     expect(client.commit(2, { value: 2 }).kind).toBe('inactive');
     expect(client.commit(1, { value: 1 }).kind).toBe('new');
   });
+
+  test('ensurePredicted fills empty slots with the predictor strategy', () => {
+    const cap = new Capacitor<State, Packet>(compare);
+    const client = cap.connect({
+      predictor: (prev) => ({ value: prev.value }), // repeat last input
+    });
+    client.commit(0, { value: 7 });
+    client.ensurePredicted(4);
+    expect(client.frameStatus(1)).toBe('predicted');
+    expect(client.frameStatus(4)).toBe('predicted');
+    expect(client.read(4)?.value).toBe(7);
+    expect(client.confirmedHead).toBe(1); // predictions don't advance confirmedHead
+  });
+
+  test('ensurePredicted is a no-op without an anchor or a predictor', () => {
+    const cap = new Capacitor<State, Packet>(compare);
+    const noPredictor = cap.connect({});
+    noPredictor.commit(0, { value: 1 });
+    noPredictor.ensurePredicted(5);
+    expect(noPredictor.frameStatus(1)).toBe('empty');
+
+    const noAnchor = cap.connect({ predictor: (prev) => prev });
+    noAnchor.ensurePredicted(5);
+    expect(noAnchor.frameStatus(0)).toBe('empty');
+  });
+
+  test('matching commit upgrades a prediction without rollback', () => {
+    const cap = new Capacitor<State, Packet>(compare);
+    const client = cap.connect({ predictor: (prev) => prev });
+    client.commit(0, { value: 3 });
+    client.ensurePredicted(2);
+    expect(client.frameStatus(1)).toBe('predicted');
+
+    expect(client.commit(1, { value: 3 }).kind).toBe('duplicate');
+    expect(client.frameStatus(1)).toBe('confirmed');
+    expect(client.confirmedHead).toBe(2);
+    expect(client.consumeDirty()).toBe(null);
+
+    // Frame 2 prediction disagrees with the wire input → correction.
+    const result = client.commit(2, { value: 99 });
+    expect(result.kind).toBe('corrected');
+    expect(client.consumeDirty()).toBe(2);
+  });
+
+  test('ensurePredicted leaves already-written slots alone', () => {
+    const cap = new Capacitor<State, Packet>(compare);
+    const client = cap.connect({ predictor: (prev) => ({ value: prev.value + 1 }) });
+    client.commit(0, { value: 0 });
+    // Land a confirmed value mid-stream as well.
+    client.commit(3, { value: 42 });
+    client.ensurePredicted(5);
+    expect(client.read(3)?.value).toBe(42); // confirmed value preserved
+    expect(client.read(1)?.value).toBe(1);
+    expect(client.read(2)?.value).toBe(2);
+    // After the confirmed gap, predictions resume from the confirmed value.
+    expect(client.read(4)?.value).toBe(43);
+    expect(client.read(5)?.value).toBe(44);
+  });
 });
 
 describe('Capacitor lockstep helpers', () => {

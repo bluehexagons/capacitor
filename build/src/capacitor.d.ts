@@ -38,6 +38,7 @@ export declare class Client<V> {
     get size(): number;
     get sizeOffset(): number;
     constructor({ comparator, startFrame, sizeOffset, historyFrames, predictor, }: ClientProps<V>);
+    resync(frame: number): void;
     deactivate(frame: number): void;
     trimBefore(frame: number): void;
     commit(frame: number, value: V): CommitResult;
@@ -69,6 +70,7 @@ export declare class Capacitor<C, V> {
     trimBefore(frame: number): void;
     ensurePredicted(frame: number): void;
     invalidatePredictedFrom(frame: number): void;
+    resync(frame: number): void;
     readConfirmed(frame: number): boolean;
     read(frame: number): boolean;
     readDetailed(frame: number): CapacitorReadResult<V>;

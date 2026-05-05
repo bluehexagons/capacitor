@@ -34,6 +34,20 @@ export class Client {
         this.values = new Array(historyFrames).fill(null);
         this.status = new Array(historyFrames).fill('empty');
     }
+    resync(frame) {
+        if (!Number.isSafeInteger(frame) || frame < 0) {
+            throw new Error('frame must be a non-negative safe integer');
+        }
+        this.startFrame = frame;
+        this.endFrame = Infinity;
+        this.baseFrame = frame;
+        this.confirmedHead = frame;
+        this.writtenHead = frame;
+        this.dirtyFrame = Infinity;
+        this.cache = null;
+        this.values.fill(null);
+        this.status.fill('empty');
+    }
     deactivate(frame) {
         this.endFrame = frame;
     }
@@ -245,6 +259,10 @@ export class Capacitor {
     invalidatePredictedFrom(frame) {
         for (const client of this.clients)
             client.invalidatePredictedFrom(frame);
+    }
+    resync(frame) {
+        for (const client of this.clients)
+            client.resync(frame);
     }
     readConfirmed(frame) {
         let ok = true;

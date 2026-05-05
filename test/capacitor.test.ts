@@ -237,6 +237,51 @@ describe('Client', () => {
     expect(a.frameStatus(1)).toBe('empty');
     expect(b.frameStatus(1)).toBe('empty');
   });
+
+  test('resync clears buffered values and re-anchors the same client object', () => {
+    const cap = new Capacitor<State, Packet>(compare);
+    const client = cap.connect({ predictor: (prev) => ({ value: prev.value + 1 }) });
+
+    client.commit(0, { value: 0 });
+    client.ensurePredicted(4);
+    const corrected = client.commit(2, { value: 20 });
+    expect(corrected.kind).toBe('corrected');
+
+    client.resync(10);
+
+    expect(client.startFrame).toBe(10);
+    expect(client.sizeOffset).toBe(10);
+    expect(client.size).toBe(0);
+    expect(client.read(0)).toBe(null);
+    expect(client.read(4)).toBe(null);
+    expect(client.read(10)).toBe(null);
+    expect(client.consumeDirty()).toBe(null);
+    expect(client.commit(9, { value: 9 }).kind).toBe('stale');
+    expect(client.commit(10, { value: 10 }).kind).toBe('new');
+    expect(client.read(10)?.value).toBe(10);
+  });
+
+  test('Capacitor.resync preserves client references while clearing all clients', () => {
+    const cap = new Capacitor<State, Packet>(compare);
+    const a = cap.connect({});
+    const b = cap.connect({});
+
+    a.commit(0, { value: 1 });
+    b.commit(0, { value: 2 });
+    cap.resync(7);
+
+    expect(cap.clients.has(a)).toBe(true);
+    expect(cap.clients.has(b)).toBe(true);
+    expect(a.sizeOffset).toBe(7);
+    expect(b.sizeOffset).toBe(7);
+    expect(cap.readConfirmed(7)).toBe(false);
+
+    a.commit(7, { value: 17 });
+    b.commit(7, { value: 27 });
+    expect(cap.readConfirmed(7)).toBe(true);
+    expect(a.cache?.value).toBe(17);
+    expect(b.cache?.value).toBe(27);
+  });
 });
 
 describe('Capacitor lockstep helpers', () => {

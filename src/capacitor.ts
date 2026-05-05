@@ -131,6 +131,32 @@ export class Client<V> {
   }
 
   /**
+   * Clear all buffered input and re-anchor this client at `frame`.
+   *
+   * This is intentionally stronger than `trimBefore()`: it drops both
+   * confirmed and predicted values, clears dirty rollback state, and makes the
+   * client active again from the new frame. Consumers use this when an external
+   * protocol has established a fresh frame origin (for example a synchronized
+   * match start) and any values from the previous scene/frame coordinate must
+   * not be read under the new clock.
+   */
+  resync(frame: number): void {
+    if (!Number.isSafeInteger(frame) || frame < 0) {
+      throw new Error('frame must be a non-negative safe integer');
+    }
+
+    this.startFrame = frame;
+    this.endFrame = Infinity;
+    this.baseFrame = frame;
+    this.confirmedHead = frame;
+    this.writtenHead = frame;
+    this.dirtyFrame = Infinity;
+    this.cache = null;
+    this.values.fill(null);
+    this.status.fill('empty');
+  }
+
+  /**
    * Mark this client as no longer participating from `frame` onward.
    * Reads / commits at or after `frame` return `kind: 'inactive'`.
    */
@@ -440,6 +466,15 @@ export class Capacitor<C, V> {
    */
   invalidatePredictedFrom(frame: number): void {
     for (const client of this.clients) client.invalidatePredictedFrom(frame);
+  }
+
+  /**
+   * Clear every connected client's buffered values and re-anchor them at
+   * `frame`. Existing Client objects are preserved so external maps/references
+   * remain valid.
+   */
+  resync(frame: number): void {
+    for (const client of this.clients) client.resync(frame);
   }
 
   /**

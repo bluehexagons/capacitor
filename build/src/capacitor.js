@@ -63,6 +63,28 @@ export class Client {
     commit(frame, value) {
         return this.write(frame, value, 'confirmed');
     }
+    commitIfEmpty(frame, value) {
+        if (frame < this.startFrame)
+            return { kind: 'stale' };
+        if (frame >= this.endFrame)
+            return { kind: 'inactive' };
+        if (frame < this.baseFrame)
+            return { kind: 'outside-window' };
+        this.ensureCapacity(frame);
+        const slot = frame % this.capacity;
+        if (this.status[slot] !== 'empty') {
+            return { kind: 'duplicate' };
+        }
+        this.values[slot] = value;
+        this.status[slot] = 'confirmed';
+        if (frame >= this.writtenHead)
+            this.writtenHead = frame + 1;
+        this.advanceConfirmedHead();
+        return { kind: 'new' };
+    }
+    hasValue(frame) {
+        return this.frameStatus(frame) !== 'empty';
+    }
     predict(frame, value) {
         if (frame < this.startFrame)
             return { kind: 'stale' };
@@ -184,9 +206,9 @@ export class Client {
                 prev = this.values[slot];
                 continue;
             }
-            if (prev === null)
-                return;
             const predicted = this.predictor(prev, f);
+            if (predicted === null)
+                return;
             this.predict(f, predicted);
             prev = predicted;
         }
@@ -320,6 +342,21 @@ export class Capacitor {
             }
         }
         return { confirmed, complete, rollbackFrame: earliestDirty, values };
+    }
+    pendingClients(frame) {
+        const pending = [];
+        for (const client of this.clients) {
+            if (frame >= client.endFrame)
+                continue;
+            if (frame < client.startFrame) {
+                pending.push(client);
+                continue;
+            }
+            if (client.frameStatus(frame) !== 'confirmed') {
+                pending.push(client);
+            }
+        }
+        return pending;
     }
     clear() {
         this.clients.clear();

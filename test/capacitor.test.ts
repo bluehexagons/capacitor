@@ -135,7 +135,7 @@ describe('Client', () => {
   test('ensurePredicted fills empty slots with the predictor strategy', () => {
     const cap = new Capacitor<State, Packet>(compare);
     const client = cap.connect({
-      predictor: (prev) => ({ value: prev.value }), // repeat last input
+      predictor: (prev) => (prev !== null ? { value: prev.value } : null), // repeat last input
     });
     client.commit(0, { value: 7 });
     client.ensurePredicted(4);
@@ -145,16 +145,18 @@ describe('Client', () => {
     expect(client.confirmedHead).toBe(1); // predictions don't advance confirmedHead
   });
 
-  test('ensurePredicted is a no-op without an anchor or a predictor', () => {
+  test('ensurePredicted is a no-op when no predictor is configured', () => {
     const cap = new Capacitor<State, Packet>(compare);
     const noPredictor = cap.connect({});
     noPredictor.commit(0, { value: 1 });
     noPredictor.ensurePredicted(5);
     expect(noPredictor.frameStatus(1)).toBe('empty');
 
-    const noAnchor = cap.connect({ predictor: (prev) => prev });
-    noAnchor.ensurePredicted(5);
-    expect(noAnchor.frameStatus(0)).toBe('empty');
+    // A predictor that propagates null prev (passthrough) effectively
+    // refuses cold-start fills — slots without an anchor stay empty.
+    const passThrough = cap.connect({ predictor: (prev) => prev });
+    passThrough.ensurePredicted(5);
+    expect(passThrough.frameStatus(0)).toBe('empty');
   });
 
   test('matching commit upgrades a prediction without rollback', () => {
@@ -177,7 +179,9 @@ describe('Client', () => {
 
   test('ensurePredicted leaves already-written slots alone', () => {
     const cap = new Capacitor<State, Packet>(compare);
-    const client = cap.connect({ predictor: (prev) => ({ value: prev.value + 1 }) });
+    const client = cap.connect({
+      predictor: (prev) => (prev !== null ? { value: prev.value + 1 } : null),
+    });
     client.commit(0, { value: 0 });
     // Land a confirmed value mid-stream as well.
     client.commit(3, { value: 42 });
@@ -192,7 +196,9 @@ describe('Client', () => {
 
   test('invalidatePredictedFrom drops predictions and lets ensurePredicted recompute', () => {
     const cap = new Capacitor<State, Packet>(compare);
-    const client = cap.connect({ predictor: (prev) => ({ value: prev.value + 1 }) });
+    const client = cap.connect({
+      predictor: (prev) => (prev !== null ? { value: prev.value + 1 } : null),
+    });
     client.commit(0, { value: 0 });
     client.ensurePredicted(5);
     // Predictions: 1..5 derived from anchor 0.
@@ -214,7 +220,9 @@ describe('Client', () => {
 
   test('invalidatePredictedFrom preserves confirmed slots after the boundary', () => {
     const cap = new Capacitor<State, Packet>(compare);
-    const client = cap.connect({ predictor: (prev) => ({ value: prev.value + 1 }) });
+    const client = cap.connect({
+      predictor: (prev) => (prev !== null ? { value: prev.value + 1 } : null),
+    });
     client.commit(0, { value: 0 });
     client.predict(1, { value: 11 });
     client.commit(2, { value: 22 });
@@ -228,8 +236,12 @@ describe('Client', () => {
 
   test('Capacitor.invalidatePredictedFrom delegates to every client', () => {
     const cap = new Capacitor<State, Packet>(compare);
-    const a = cap.connect({ predictor: (prev) => ({ value: prev.value + 1 }) });
-    const b = cap.connect({ predictor: (prev) => ({ value: prev.value + 10 }) });
+    const a = cap.connect({
+      predictor: (prev) => (prev !== null ? { value: prev.value + 1 } : null),
+    });
+    const b = cap.connect({
+      predictor: (prev) => (prev !== null ? { value: prev.value + 10 } : null),
+    });
     a.commit(0, { value: 0 });
     b.commit(0, { value: 0 });
     cap.ensurePredicted(3);
@@ -240,7 +252,9 @@ describe('Client', () => {
 
   test('resync clears buffered values and re-anchors the same client object', () => {
     const cap = new Capacitor<State, Packet>(compare);
-    const client = cap.connect({ predictor: (prev) => ({ value: prev.value + 1 }) });
+    const client = cap.connect({
+      predictor: (prev) => (prev !== null ? { value: prev.value + 1 } : null),
+    });
 
     client.commit(0, { value: 0 });
     client.ensurePredicted(4);
@@ -281,6 +295,91 @@ describe('Client', () => {
     expect(cap.readConfirmed(7)).toBe(true);
     expect(a.cache?.value).toBe(17);
     expect(b.cache?.value).toBe(27);
+  });
+
+  test('hasValue reports confirmed and predicted but not empty / out-of-window', () => {
+    const cap = new Capacitor<State, Packet>(compare);
+    const client = cap.connect({ startFrame: 5 });
+
+    expect(client.hasValue(4)).toBe(false); // before startFrame
+    expect(client.hasValue(5)).toBe(false); // empty
+    client.commit(5, { value: 5 });
+    expect(client.hasValue(5)).toBe(true);
+    client.predict(6, { value: 6 });
+    expect(client.hasValue(6)).toBe(true);
+
+    client.deactivate(7);
+    client.commit(7, { value: 7 }); // ignored (inactive)
+    expect(client.hasValue(7)).toBe(false);
+  });
+
+  test('commitIfEmpty fills empty slots and refuses to clobber existing values', () => {
+    const cap = new Capacitor<State, Packet>(compare);
+    const client = cap.connect({});
+
+    // First commitIfEmpty wins, advances the confirmed head.
+    expect(client.commitIfEmpty(0, { value: 0 }).kind).toBe('new');
+    expect(client.frameStatus(0)).toBe('confirmed');
+    expect(client.read(0)?.value).toBe(0);
+    expect(client.size).toBe(1);
+
+    // A second commitIfEmpty at the same slot is a duplicate even with a
+    // different value — the existing confirmed value is preserved.
+    expect(client.commitIfEmpty(0, { value: 99 }).kind).toBe('duplicate');
+    expect(client.read(0)?.value).toBe(0);
+
+    // commitIfEmpty also refuses to overwrite predictions.
+    client.predict(1, { value: 11 });
+    expect(client.commitIfEmpty(1, { value: 22 }).kind).toBe('duplicate');
+    expect(client.frameStatus(1)).toBe('predicted');
+    expect(client.read(1)?.value).toBe(11);
+
+    // Window edges report the same kinds as commit.
+    expect(client.commitIfEmpty(-1, { value: -1 }).kind).toBe('stale');
+    client.deactivate(5);
+    expect(client.commitIfEmpty(5, { value: 5 }).kind).toBe('inactive');
+  });
+
+  test('commitIfEmpty advances confirmed head across a contiguous fill', () => {
+    const cap = new Capacitor<State, Packet>(compare);
+    const client = cap.connect({});
+
+    // Sparse base: leave a gap at frame 1.
+    client.commit(0, { value: 0 });
+    client.commit(2, { value: 2 });
+    expect(client.confirmedHead).toBe(1);
+
+    // commitIfEmpty fills the gap; head walks past the existing confirmed
+    // slot at frame 2.
+    expect(client.commitIfEmpty(1, { value: 1 }).kind).toBe('new');
+    expect(client.confirmedHead).toBe(3);
+    expect(client.read(1)?.value).toBe(1);
+    expect(client.read(2)?.value).toBe(2);
+  });
+
+  test('null-tolerant predictor synthesizes cold-start values', () => {
+    const cap = new Capacitor<State, Packet>(compare);
+    // Cold-start predictor: produces 0 when there is no anchor, then
+    // repeats the prior value.
+    const client = cap.connect({ predictor: (prev) => (prev !== null ? prev : { value: 0 }) });
+
+    // No prior commit at all — ensurePredicted should still fill.
+    client.ensurePredicted(2);
+    expect(client.frameStatus(0)).toBe('predicted');
+    expect(client.frameStatus(1)).toBe('predicted');
+    expect(client.frameStatus(2)).toBe('predicted');
+    expect(client.read(0)?.value).toBe(0);
+    expect(client.read(2)?.value).toBe(0);
+  });
+
+  test('predictor returning null halts prediction without writing the slot', () => {
+    const cap = new Capacitor<State, Packet>(compare);
+    const client = cap.connect({ predictor: () => null });
+
+    client.ensurePredicted(3);
+    expect(client.frameStatus(0)).toBe('empty');
+    expect(client.frameStatus(3)).toBe('empty');
+    expect(client.writtenHead).toBe(0);
   });
 });
 
@@ -379,5 +478,45 @@ describe('Capacitor lockstep helpers', () => {
     cap.disconnect(c2);
     expect(cap.readConfirmed(0)).toBe(true);
     expect(cap.size()).toBe(1);
+  });
+
+  test('pendingClients returns exactly the clients blocking readConfirmed', () => {
+    const cap = new Capacitor<State, Packet>(compare);
+    const a = cap.connect({});
+    const b = cap.connect({});
+    const c = cap.connect({ startFrame: 5 });
+
+    // Nothing committed yet — every client blocks frame 0; c is also
+    // before its startFrame and still blocks.
+    expect(cap.pendingClients(0)).toEqual([a, b, c]);
+    expect(cap.readConfirmed(0)).toBe(false);
+
+    a.commit(0, { value: 0 });
+    expect(cap.pendingClients(0)).toEqual([b, c]);
+
+    b.commit(0, { value: 0 });
+    // c is still inactive at frame 0 (startFrame 5), but it blocks
+    // lockstep until its window opens.
+    expect(cap.pendingClients(0)).toEqual([c]);
+    expect(cap.readConfirmed(0)).toBe(false);
+
+    // Predicted values do not satisfy "confirmed": pendingClients still
+    // flags them.
+    a.predict(1, { value: 1 });
+    b.commit(1, { value: 1 });
+    expect(cap.pendingClients(1)).toEqual([a, c]);
+  });
+
+  test('pendingClients skips deactivated clients but includes pre-active ones', () => {
+    const cap = new Capacitor<State, Packet>(compare);
+    const a = cap.connect({});
+    const b = cap.connect({});
+
+    a.commit(0, { value: 0 });
+    b.deactivate(0);
+
+    // a satisfies frame 0; b was deactivated and is excluded.
+    expect(cap.pendingClients(0)).toEqual([]);
+    expect(cap.readConfirmed(0)).toBe(true);
   });
 });

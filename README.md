@@ -5,7 +5,7 @@ Capacitor is a purpose-built FIFO interpolation-friendly server-client model syn
 ## Installation
 
 ```bash
-npm install https://codeload.github.com/bluehexagons/capacitor/tar.gz/refs/tags/v0.3.5
+npm install https://codeload.github.com/bluehexagons/capacitor/tar.gz/refs/tags/v0.5.0
 ```
 
 ## Requirements
@@ -43,6 +43,30 @@ if (cap.readConfirmed(0)) {
 const detailed = cap.readDetailed(0);
 const rollback = cap.consumeDirty();
 ```
+
+## Version 0.5.x — what changed
+
+Capacitor 0.5.0 broadens the rollback / lockstep primitives so consumers
+can drive both gameplay (prediction + rollback) and menu (neutral
+fill) scenes through the same Capacitor APIs without bespoke buffer
+peeking.
+
+- `Predictor<V>` signature changed to `(prev: V | null, frame: number)
+  => V | null`. `ensurePredicted` now invokes the predictor even when
+  there is no anchor at `frame - 1`, so cold-start predictors can
+  synthesize a neutral default. Returning `null` from the predictor
+  halts the fill without writing the slot.
+- New `Client.commitIfEmpty(frame, value)` writes a confirmed value
+  only if the slot is currently empty (returns `duplicate` for any
+  existing predicted or confirmed value). Used to back-fill neutral
+  inputs for network clients that have gone quiet without clobbering
+  predictions.
+- New `Client.hasValue(frame)` — `true` if the slot holds a confirmed
+  or predicted value within the active window.
+- New `Capacitor.pendingClients(frame)` returns the clients blocking
+  `readConfirmed(frame)`. Inactive clients (`frame >= endFrame`) are
+  excluded; not-yet-active clients (`frame < startFrame`) are
+  included. Useful for diagnosing stalls.
 
 ## Version 0.4.x — what changed
 

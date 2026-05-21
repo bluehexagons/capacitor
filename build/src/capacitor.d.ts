@@ -14,7 +14,7 @@ export type CommitResult = {
     kind: 'inactive';
 };
 export type ClientFrameStatus = 'confirmed' | 'predicted' | 'empty';
-export type Predictor<V> = (prev: V, frame: number) => V;
+export type Predictor<V> = (prev: V | null, frame: number) => V | null;
 interface ClientProps<V> {
     comparator?: Comparator<V>;
     startFrame?: number;
@@ -42,6 +42,8 @@ export declare class Client<V> {
     deactivate(frame: number): void;
     trimBefore(frame: number): void;
     commit(frame: number, value: V): CommitResult;
+    commitIfEmpty(frame: number, value: V): CommitResult;
+    hasValue(frame: number): boolean;
     predict(frame: number, value: V): CommitResult;
     private write;
     private ensureCapacity;
@@ -74,6 +76,7 @@ export declare class Capacitor<C, V> {
     readConfirmed(frame: number): boolean;
     read(frame: number): boolean;
     readDetailed(frame: number): CapacitorReadResult<V>;
+    pendingClients(frame: number): Client<V>[];
     clear(): void;
     size(): number;
 }

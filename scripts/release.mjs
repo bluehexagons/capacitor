@@ -23,13 +23,12 @@ const run = (command, args, options = {}) => {
   return result;
 };
 
-const requireCleanTrackedWorktree = () => {
-  if (run('git', ['diff', '--quiet'], { allowFailure: true }).status !== 0) {
-    throw new Error('Release tagging requires a clean tracked git worktree');
-  }
-
-  if (run('git', ['diff', '--cached', '--quiet'], { allowFailure: true }).status !== 0) {
-    throw new Error('Release tagging requires no staged changes');
+const requireCleanWorktree = () => {
+  const status = run('git', ['status', '--porcelain=v1', '--untracked-files=all'], {
+    capture: true,
+  });
+  if (status.stdout.trim() !== '') {
+    throw new Error('Release tagging requires a completely clean git worktree');
   }
 };
 
@@ -43,11 +42,28 @@ const remoteTagExists = (tag) =>
     capture: true,
   }).status === 0;
 
+const requirePublishedMainHead = () => {
+  const branch = run('git', ['branch', '--show-current'], { capture: true }).stdout.trim();
+  if (branch !== 'main') {
+    throw new Error(`Release tagging must run from main, got ${branch || 'detached HEAD'}`);
+  }
+
+  const localHead = run('git', ['rev-parse', 'HEAD'], { capture: true }).stdout.trim();
+  const remoteHeadOutput = run('git', ['ls-remote', '--heads', remote, 'refs/heads/main'], {
+    capture: true,
+  }).stdout.trim();
+  const remoteHead = remoteHeadOutput.split(/\s+/u)[0];
+  if (remoteHead !== localHead) {
+    throw new Error(`Push the release commit to ${remote}/main before tagging`);
+  }
+};
+
 if (!/^\d+\.\d+\.\d+$/.test(version)) {
   throw new Error(`Package version must be semver x.y.z for release tagging, got ${version}`);
 }
 
-requireCleanTrackedWorktree();
+requireCleanWorktree();
+requirePublishedMainHead();
 
 if (localTagExists(tagName)) {
   throw new Error(`Release tag ${tagName} already exists locally`);
@@ -57,6 +73,9 @@ if (remoteTagExists(tagName)) {
   throw new Error(`Release tag ${tagName} already exists on ${remote}`);
 }
 
-run('npm', ['test']);
+run('npm', ['run', 'check']);
+// Compilation is part of the check. Requiring a clean tree again proves the
+// checked-in build output matches the source that the tag will contain.
+requireCleanWorktree();
 run('git', ['tag', '-a', tagName, '-m', `Capacitor ${tagName}`]);
 run('git', ['push', remote, `refs/tags/${tagName}`]);

@@ -5,7 +5,7 @@ Capacitor is a purpose-built FIFO interpolation-friendly server-client model syn
 ## Installation
 
 ```bash
-npm install https://codeload.github.com/bluehexagons/capacitor/tar.gz/refs/tags/v0.5.0
+npm install https://codeload.github.com/bluehexagons/capacitor/tar.gz/refs/tags/v0.5.1
 ```
 
 ## Requirements
@@ -46,13 +46,19 @@ const rollback = cap.consumeDirty();
 
 ## Version 0.5.x — what changed
 
+Capacitor 0.5.1 fixes bounded-window behavior for sparse writes and
+predictions that extend beyond one ring capacity. It also validates frame
+coordinates, makes deactivation monotonic, preserves dirty-frame reporting
+for ended clients, exports the client option types, and adds automated
+release/build consistency checks.
+
 Capacitor 0.5.0 broadens the rollback / lockstep primitives so consumers
 can drive both gameplay (prediction + rollback) and menu (neutral
 fill) scenes through the same Capacitor APIs without bespoke buffer
 peeking.
 
-- `Predictor<V>` signature changed to `(prev: V | null, frame: number)
-  => V | null`. `ensurePredicted` now invokes the predictor even when
+- `Predictor<V>` now receives the previous value (or `null`) and the absolute
+  frame number. `ensurePredicted` invokes it even when
   there is no anchor at `frame - 1`, so cold-start predictors can
   synthesize a neutral default. Returning `null` from the predictor
   halts the fill without writing the slot.
@@ -107,6 +113,9 @@ npm run compile
 # Run tests
 npm test
 
+# Run the full test, lint, and formatting gate
+npm run check
+
 # Lint
 npm run lint
 
@@ -124,12 +133,12 @@ The repository includes checked-in build output under `build/src` so that Git-ba
 Capacitor is consumed from GitHub tags. To release a new version:
 
 1. Update `version` in `package.json` and `package-lock.json`.
-2. Run `npm test`.
-3. Commit the version and build output changes.
+2. Run `npm run check`.
+3. Commit and push the version and build output changes to `main`.
 4. Run `npm run release`.
 
-The release script verifies the tracked worktree is clean, checks that `v<version>` does not already exist locally or on `origin`, reruns `npm test`, creates an annotated tag, and pushes the tag.
+The release script verifies the entire worktree is clean, checks that `v<version>` does not already exist locally or on `origin`, runs the full validation gate, confirms compilation did not change the checked-in build output, creates an annotated tag, and pushes the tag.
 
 ## License
 
-GPL-3.0
+Apache-2.0

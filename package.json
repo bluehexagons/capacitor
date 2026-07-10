@@ -1,6 +1,6 @@
 {
   "name": "@bluehexagons/capacitor",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Capacitor is a client/server synchronization utility written for Antistatic",
   "keywords": [
     "client-server",
@@ -39,6 +39,8 @@
     "test": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js",
     "lint": "oxlint .",
     "format": "oxfmt --write .",
+    "format:check": "oxfmt --check .",
+    "check": "npm test && npm run lint && npm run format:check",
     "fix": "oxlint --fix . && npm run format",
     "clean": "node -e \"for (const path of ['build', 'coverage']) { try { require('node:fs').rmSync(path, { recursive: true, force: true }); } catch {} }\"",
     "compile": "tsc --pretty",

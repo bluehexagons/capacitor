@@ -15,13 +15,14 @@ export type CommitResult = {
 };
 export type ClientFrameStatus = 'confirmed' | 'predicted' | 'empty';
 export type Predictor<V> = (prev: V | null, frame: number) => V | null;
-interface ClientProps<V> {
+export interface ClientProps<V> {
     comparator?: Comparator<V>;
     startFrame?: number;
     sizeOffset?: number;
     historyFrames?: number;
     predictor?: Predictor<V>;
 }
+export type CapacitorClientProps<V> = Omit<ClientProps<V>, 'comparator'>;
 export declare class Client<V> {
     comparator: Comparator<V>;
     startFrame: number;
@@ -47,6 +48,7 @@ export declare class Client<V> {
     predict(frame: number, value: V): CommitResult;
     private write;
     private ensureCapacity;
+    private advanceBaseFrame;
     private advanceConfirmedHead;
     private markDirty;
     consumeDirty(): number | null;
@@ -66,7 +68,7 @@ export declare class Capacitor<C, V> {
     commits: C[];
     clients: Set<Client<V>>;
     constructor(comparator: Comparator<V>);
-    connect(props: ClientProps<V>): Client<V>;
+    connect(props?: CapacitorClientProps<V>): Client<V>;
     disconnect(client: Client<V>): void;
     consumeDirty(): number | null;
     trimBefore(frame: number): void;
@@ -80,4 +82,3 @@ export declare class Capacitor<C, V> {
     clear(): void;
     size(): number;
 }
-export {};

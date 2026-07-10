@@ -1,4 +1,4 @@
-import { Capacitor } from '../src/capacitor.js';
+import { Capacitor, Client } from '../src/capacitor.js';
 
 interface State {
   text: string;
@@ -89,14 +89,15 @@ describe('Client', () => {
     expect(client.consumeDirty()).toBe(null);
   });
 
-  test('predict cannot downgrade confirmed; matching predict is duplicate', () => {
+  test('predict cannot downgrade or create rollback against confirmed input', () => {
     const cap = new Capacitor<State, Packet>(compare);
     const client = cap.connect({});
     expect(client.commit(0, { value: 5 }).kind).toBe('new');
     expect(client.predict(0, { value: 5 }).kind).toBe('duplicate');
-    expect(client.predict(0, { value: 9 }).kind).toBe('corrected');
+    expect(client.predict(0, { value: 9 }).kind).toBe('duplicate');
     expect(client.frameStatus(0)).toBe('confirmed');
     expect(client.read(0)?.value).toBe(5);
+    expect(client.consumeDirty()).toBe(null);
   });
 
   test('history bound trims oldest entries on overflow', () => {
@@ -112,6 +113,69 @@ describe('Client', () => {
 
     // A re-commit landing in the trimmed region is rejected.
     expect(client.commit(0, { value: 0 }).kind).toBe('outside-window');
+  });
+
+  test('sparse writes beyond the window remain readable without aliasing the confirmed head', () => {
+    const cap = new Capacitor<State, Packet>(compare);
+    const client = cap.connect({ historyFrames: 4 });
+
+    expect(client.commit(100, { value: 100 }).kind).toBe('new');
+    expect(client.baseFrame).toBe(97);
+    expect(client.confirmedHead).toBe(97);
+    expect(client.read(100)?.value).toBe(100);
+
+    expect(client.commit(101, { value: 101 }).kind).toBe('new');
+    expect(client.baseFrame).toBe(98);
+    expect(client.read(100)?.value).toBe(100);
+    expect(client.read(101)?.value).toBe(101);
+
+    // Filling the retained gap advances through both sparse commits.
+    client.commit(98, { value: 98 });
+    client.commit(99, { value: 99 });
+    expect(client.confirmedHead).toBe(102);
+  });
+
+  test('constructor and mutating APIs reject non-integral frame coordinates', () => {
+    expect(() => new Client({ historyFrames: 1.5 })).toThrow(
+      'historyFrames must be a positive safe integer within the maximum array length'
+    );
+    expect(() => new Client({ startFrame: -1 })).toThrow(
+      'frame must be a non-negative safe integer'
+    );
+    expect(() => new Client({ startFrame: Number.NaN })).toThrow(
+      'frame must be a non-negative safe integer'
+    );
+    expect(() => new Client({ startFrame: 1, sizeOffset: 2 })).toThrow(
+      'startFrame and sizeOffset must match when both are provided'
+    );
+
+    const client = new Client<Packet>({ comparator: compare });
+    expect(() => client.commit(Number.NaN, { value: 0 })).toThrow('frame must be a safe integer');
+    expect(() => client.predict(1.5, { value: 0 })).toThrow('frame must be a safe integer');
+    expect(() => client.deactivate(Infinity)).toThrow('frame must be a non-negative safe integer');
+
+    const cap = new Capacitor<State, Packet>(compare);
+    expect(() => cap.readConfirmed(Number.NaN)).toThrow('frame must be a safe integer');
+    expect(() => cap.resync(-1)).toThrow('frame must be a non-negative safe integer');
+  });
+
+  test('direct Client construction uses identity comparison by default', () => {
+    const client = new Client<number>({});
+
+    client.commit(0, 1);
+    expect(client.commit(0, 1).kind).toBe('duplicate');
+    expect(client.commit(0, 2).kind).toBe('corrected');
+  });
+
+  test('Capacitor.connect always uses the shared comparator', () => {
+    const cap = new Capacitor<State, Packet>(compare);
+    // A non-literal object can still carry an extra runtime property even
+    // though CapacitorClientProps excludes it from the public type.
+    const props = { historyFrames: 4, comparator: () => true };
+    const client = cap.connect(props);
+
+    client.commit(0, { value: 1 });
+    expect(client.commit(0, { value: 2 }).kind).toBe('corrected');
   });
 
   test('trimBefore advances baseFrame and clears slots', () => {
@@ -130,6 +194,10 @@ describe('Client', () => {
     client.deactivate(2);
     expect(client.commit(2, { value: 2 }).kind).toBe('inactive');
     expect(client.commit(1, { value: 1 }).kind).toBe('new');
+
+    // Repeated calls can shorten participation but cannot reactivate it.
+    client.deactivate(5);
+    expect(client.endFrame).toBe(2);
   });
 
   test('ensurePredicted fills empty slots with the predictor strategy', () => {
@@ -143,6 +211,22 @@ describe('Client', () => {
     expect(client.frameStatus(4)).toBe('predicted');
     expect(client.read(4)?.value).toBe(7);
     expect(client.confirmedHead).toBe(1); // predictions don't advance confirmedHead
+  });
+
+  test('ensurePredicted extends beyond one ring capacity without slot aliasing', () => {
+    const cap = new Capacitor<State, Packet>(compare);
+    const client = cap.connect({
+      historyFrames: 4,
+      predictor: (prev) => ({ value: (prev?.value ?? -1) + 1 }),
+    });
+
+    client.ensurePredicted(10);
+
+    expect(client.baseFrame).toBe(7);
+    expect(client.read(6)).toBe(null);
+    expect(client.read(7)?.value).toBe(7);
+    expect(client.read(10)?.value).toBe(10);
+    expect(client.frameStatus(10)).toBe('predicted');
   });
 
   test('ensurePredicted is a no-op when no predictor is configured', () => {
@@ -415,6 +499,18 @@ describe('Capacitor lockstep helpers', () => {
     expect(detailed.values[0]?.value).toBe(9);
   });
 
+  test('readDetailed reports dirty history from a client inactive at the queried frame', () => {
+    const cap = new Capacitor<State, Packet>(compare);
+    const client = cap.connect({});
+    client.commit(0, { value: 1 });
+    client.commit(0, { value: 2 });
+    client.deactivate(1);
+
+    const detailed = cap.readDetailed(1);
+    expect(detailed.rollbackFrame).toBe(0);
+    expect(detailed.values).toEqual([null]);
+  });
+
   test('multiple clients with offsets', () => {
     const cap = new Capacitor<State, Packet>(compare);
     const client1 = cap.connect({ startFrame: 6 });
@@ -468,6 +564,27 @@ describe('Capacitor lockstep helpers', () => {
     for (let i = 0; i < 5; i++) c1.commit(i, { value: i });
     for (let i = 0; i < 3; i++) c2.commit(i, { value: i });
     expect(cap.size()).toBe(3);
+  });
+
+  test('size ignores a deactivated client confirmed through its end frame', () => {
+    const cap = new Capacitor<State, Packet>(compare);
+    const ended = cap.connect({});
+    const active = cap.connect({});
+    for (let i = 0; i < 2; i++) ended.commit(i, { value: i });
+    for (let i = 0; i < 5; i++) active.commit(i, { value: i });
+
+    ended.deactivate(2);
+    expect(cap.size()).toBe(5);
+  });
+
+  test('size preserves the completed frontier when every client has ended', () => {
+    const cap = new Capacitor<State, Packet>(compare);
+    const client = cap.connect({});
+    client.commit(0, { value: 0 });
+    client.commit(1, { value: 1 });
+    client.deactivate(2);
+
+    expect(cap.size()).toBe(2);
   });
 
   test('disconnected clients are not considered for size or readConfirmed', () => {

@@ -18,7 +18,7 @@ export type Comparator<V> = (a: V, b: V) => boolean;
 export type CommitResult =
   /** Frame had no value previously; first commit at this slot. */
   | { kind: 'new' }
-  /** Frame already held a comparator-equal value; no rollback needed. */
+  /** No write was needed; the stored value remains authoritative and no rollback is needed. */
   | { kind: 'duplicate' }
   /** Frame held a different value; replay from `rollbackFrame`. */
   | { kind: 'corrected'; rollbackFrame: number }
@@ -47,7 +47,7 @@ export type ClientFrameStatus =
  */
 export type Predictor<V> = (prev: V | null, frame: number) => V | null;
 
-interface ClientProps<V> {
+export interface ClientProps<V> {
   comparator?: Comparator<V>;
   /**
    * First absolute frame this client participates in. Frames before
@@ -67,23 +67,41 @@ interface ClientProps<V> {
    * fills empty slots up through `frame` by calling
    * `predictor(prevValue, frame)` for each missing slot, where
    * `prevValue` is whatever sits at `frame - 1` (confirmed or already
-   * predicted). Without a previous value the slot is left empty.
+   * predicted). The predictor may synthesize a cold-start value when
+   * `prevValue` is `null`; returning `null` leaves the slot empty.
    */
   predictor?: Predictor<V>;
 }
 
-const defaultComparator = <V>(_a: V, _b: V) => true;
+/** Per-client options accepted by `Capacitor.connect()`. */
+export type CapacitorClientProps<V> = Omit<ClientProps<V>, 'comparator'>;
+
+const defaultComparator = <V>(a: V, b: V) => Object.is(a, b);
 const DEFAULT_HISTORY_FRAMES = 1024;
+const MAX_ARRAY_LENGTH = 0xffffffff;
+
+const assertSafeFrame = (frame: number): void => {
+  if (!Number.isSafeInteger(frame)) {
+    throw new Error('frame must be a safe integer');
+  }
+};
+
+const assertNonNegativeFrame = (frame: number): void => {
+  if (!Number.isSafeInteger(frame) || frame < 0) {
+    throw new Error('frame must be a non-negative safe integer');
+  }
+};
 
 /**
  * Per-client ring buffer.
  *
  * Slots are addressed by absolute frame, mapped to ring index
- * `(frame - baseFrame) % capacity`. `baseFrame` advances forward as
+ * `frame % capacity`. `baseFrame` advances forward as
  * the client outgrows the window, dropping the oldest entries. The
- * "contiguous head" `confirmedHead` only counts frames that have
- * landed without a gap from `startFrame`, mirroring the previous
- * `size` semantics.
+ * "contiguous head" `confirmedHead` counts frames that have landed
+ * without a gap from the retained window floor. It begins at
+ * `startFrame`, mirroring the previous `size` semantics, and advances
+ * to `baseFrame` if an unfillable gap ages out of the bounded window.
  */
 export class Client<V> {
   comparator: Comparator<V>;
@@ -93,9 +111,9 @@ export class Client<V> {
   endFrame = Infinity;
   /** Ring capacity in frames. */
   capacity: number;
-  /** Absolute frame stored at ring index 0 (advances with `trimBefore`). */
+  /** Oldest absolute frame retained in the ring (advances with `trimBefore`). */
   baseFrame: number;
-  /** Highest absolute frame contiguously committed from startFrame, exclusive. */
+  /** Highest absolute frame contiguously committed from the retained window floor, exclusive. */
   confirmedHead: number;
   /** Last frame written (confirmed or predicted), exclusive. */
   writtenHead: number;
@@ -126,10 +144,20 @@ export class Client<V> {
     historyFrames = DEFAULT_HISTORY_FRAMES,
     predictor,
   }: ClientProps<V>) {
-    if (historyFrames <= 0 || !Number.isFinite(historyFrames)) {
-      throw new Error('historyFrames must be a positive finite integer');
+    if (
+      !Number.isSafeInteger(historyFrames) ||
+      historyFrames <= 0 ||
+      historyFrames > MAX_ARRAY_LENGTH
+    ) {
+      throw new Error(
+        'historyFrames must be a positive safe integer within the maximum array length'
+      );
+    }
+    if (startFrame !== undefined && sizeOffset !== undefined && startFrame !== sizeOffset) {
+      throw new Error('startFrame and sizeOffset must match when both are provided');
     }
     const start = startFrame ?? sizeOffset ?? 0;
+    assertNonNegativeFrame(start);
     this.comparator = comparator;
     this.startFrame = start;
     this.capacity = historyFrames;
@@ -152,9 +180,7 @@ export class Client<V> {
    * not be read under the new clock.
    */
   resync(frame: number): void {
-    if (!Number.isSafeInteger(frame) || frame < 0) {
-      throw new Error('frame must be a non-negative safe integer');
-    }
+    assertNonNegativeFrame(frame);
 
     this.startFrame = frame;
     this.endFrame = Infinity;
@@ -172,7 +198,8 @@ export class Client<V> {
    * Reads / commits at or after `frame` return `kind: 'inactive'`.
    */
   deactivate(frame: number): void {
-    this.endFrame = frame;
+    assertNonNegativeFrame(frame);
+    this.endFrame = Math.min(this.endFrame, frame);
   }
 
   /**
@@ -181,13 +208,9 @@ export class Client<V> {
    * Never trims past `writtenHead`.
    */
   trimBefore(frame: number): void {
+    assertSafeFrame(frame);
     const target = Math.min(frame, this.writtenHead);
-    while (this.baseFrame < target) {
-      const slot = this.baseFrame % this.capacity;
-      this.values[slot] = null;
-      this.status[slot] = 'empty';
-      this.baseFrame++;
-    }
+    this.advanceBaseFrame(target);
   }
 
   /**
@@ -207,6 +230,7 @@ export class Client<V> {
    * or confirmed) is already present.
    */
   commitIfEmpty(frame: number, value: V): CommitResult {
+    assertSafeFrame(frame);
     if (frame < this.startFrame) return { kind: 'stale' };
     if (frame >= this.endFrame) return { kind: 'inactive' };
     if (frame < this.baseFrame) return { kind: 'outside-window' };
@@ -233,22 +257,22 @@ export class Client<V> {
 
   /**
    * Write a predicted value at `frame`. Returns the same kinds as
-   * `commit`, except a matching prediction overwrite reports `duplicate`
-   * and `kind: 'new'` is used both for first writes and for prediction
-   * upgrading an empty slot. Confirmed slots are never overwritten by a
-   * prediction.
+   * `commit`, except `duplicate` is returned whenever a confirmed slot
+   * already exists (regardless of the proposed prediction), and `kind: 'new'`
+   * is used for first writes. Confirmed slots are never overwritten by a
+   * prediction because they are authoritative.
    */
   predict(frame: number, value: V): CommitResult {
+    assertSafeFrame(frame);
     if (frame < this.startFrame) return { kind: 'stale' };
     if (frame >= this.endFrame) return { kind: 'inactive' };
     if (frame < this.baseFrame) return { kind: 'outside-window' };
     this.ensureCapacity(frame);
     const slot = frame % this.capacity;
     if (this.status[slot] === 'confirmed') {
-      // Don't downgrade a confirmed value.
-      const existing = this.values[slot] as V;
-      if (this.comparator(existing, value)) return { kind: 'duplicate' };
-      return { kind: 'corrected', rollbackFrame: frame };
+      // Confirmed input is authoritative. A prediction cannot change it and
+      // therefore cannot create a correction or rollback obligation.
+      return { kind: 'duplicate' };
     }
     if (this.status[slot] === 'predicted') {
       const existing = this.values[slot] as V;
@@ -264,6 +288,7 @@ export class Client<V> {
   }
 
   private write(frame: number, value: V, status: 'confirmed' | 'predicted'): CommitResult {
+    assertSafeFrame(frame);
     if (frame < this.startFrame) return { kind: 'stale' };
     if (frame >= this.endFrame) return { kind: 'inactive' };
     if (frame < this.baseFrame) return { kind: 'outside-window' };
@@ -307,7 +332,30 @@ export class Client<V> {
    */
   private ensureCapacity(frame: number): void {
     const overflow = frame - (this.baseFrame + this.capacity - 1);
-    if (overflow > 0) this.trimBefore(this.baseFrame + overflow);
+    if (overflow > 0) this.advanceBaseFrame(this.baseFrame + overflow);
+  }
+
+  /**
+   * Advance the retained window in O(capacity), even when a sparse write
+   * jumps many frames ahead. Any unconfirmed frames that fall behind the
+   * new base can no longer be filled, so the contiguous frontier is
+   * re-anchored at the first retained frame.
+   */
+  private advanceBaseFrame(target: number): void {
+    if (target <= this.baseFrame) return;
+    const distance = target - this.baseFrame;
+    if (distance >= this.capacity) {
+      this.values.fill(null);
+      this.status.fill('empty');
+    } else {
+      for (let frame = this.baseFrame; frame < target; frame++) {
+        const slot = frame % this.capacity;
+        this.values[slot] = null;
+        this.status[slot] = 'empty';
+      }
+    }
+    this.baseFrame = target;
+    if (this.confirmedHead < target) this.confirmedHead = target;
   }
 
   /** Walks the ring forward from `confirmedHead` while slots are confirmed. */
@@ -339,6 +387,7 @@ export class Client<V> {
    * or predicted. Returns `null` for missing or out-of-window frames.
    */
   read(frame: number): V | null {
+    assertSafeFrame(frame);
     if (frame < this.startFrame || frame >= this.endFrame) return null;
     if (frame < this.baseFrame || frame >= this.baseFrame + this.capacity) return null;
     const slot = frame % this.capacity;
@@ -347,6 +396,7 @@ export class Client<V> {
 
   /** Reports per-client status at `frame`. */
   frameStatus(frame: number): ClientFrameStatus {
+    assertSafeFrame(frame);
     if (frame < this.startFrame || frame >= this.endFrame) return 'empty';
     if (frame < this.baseFrame || frame >= this.baseFrame + this.capacity) return 'empty';
     return this.status[frame % this.capacity];
@@ -371,13 +421,18 @@ export class Client<V> {
    * advances and the rollback driver picks it up via `consumeDirty`.
    */
   ensurePredicted(frame: number): void {
+    assertSafeFrame(frame);
     if (this.predictor === null) return;
     if (frame < this.startFrame) return;
     const target = Math.min(frame, this.endFrame - 1);
-    let f = this.confirmedHead;
+    let f = Math.max(this.confirmedHead, this.baseFrame);
     if (f > target) return;
     let prev: V | null = f > this.startFrame ? this.read(f - 1) : null;
     for (; f <= target; f++) {
+      // Move the window before checking the modulo slot. Otherwise a frame
+      // beyond the current window can alias an occupied old slot and be
+      // mistaken for an existing prediction.
+      this.ensureCapacity(f);
       const slot = f % this.capacity;
       if (this.status[slot] !== 'empty') {
         prev = this.values[slot];
@@ -404,6 +459,7 @@ export class Client<V> {
    * the number of slots cleared, primarily for tests / diagnostics.
    */
   invalidatePredictedFrom(frame: number): number {
+    assertSafeFrame(frame);
     if (frame >= this.writtenHead) return 0;
     const start = Math.max(frame, this.baseFrame);
     let cleared = 0;
@@ -444,7 +500,7 @@ export interface CapacitorReadResult<V> {
   /** True if every active client has at least a predicted value. */
   complete: boolean;
   /**
-   * Earliest dirty frame across all active clients since the last
+   * Earliest dirty frame across all clients since the last
    * `consumeDirty()`, or `null` if nothing is pending.
    */
   rollbackFrame: number | null;
@@ -465,8 +521,8 @@ export class Capacitor<C, V> {
 
   constructor(public comparator: Comparator<V>) {}
 
-  connect(props: ClientProps<V>): Client<V> {
-    const client = new Client<V>({ comparator: this.comparator, ...props });
+  connect(props: CapacitorClientProps<V> = {}): Client<V> {
+    const client = new Client<V>({ ...props, comparator: this.comparator });
     this.clients.add(client);
     return client;
   }
@@ -493,6 +549,7 @@ export class Capacitor<C, V> {
    * Drop history before `frame` on every client.
    */
   trimBefore(frame: number): void {
+    assertSafeFrame(frame);
     for (const client of this.clients) client.trimBefore(frame);
   }
 
@@ -501,6 +558,7 @@ export class Capacitor<C, V> {
    * Convenience wrapper around `Client.ensurePredicted`.
    */
   ensurePredicted(frame: number): void {
+    assertSafeFrame(frame);
     for (const client of this.clients) client.ensurePredicted(frame);
   }
 
@@ -511,6 +569,7 @@ export class Capacitor<C, V> {
    * recompute predictions from the corrected anchor.
    */
   invalidatePredictedFrom(frame: number): void {
+    assertSafeFrame(frame);
     for (const client of this.clients) client.invalidatePredictedFrom(frame);
   }
 
@@ -520,6 +579,7 @@ export class Capacitor<C, V> {
    * remain valid.
    */
   resync(frame: number): void {
+    assertNonNegativeFrame(frame);
     for (const client of this.clients) client.resync(frame);
   }
 
@@ -533,6 +593,7 @@ export class Capacitor<C, V> {
    * are caught up. Deactivated clients (frame >= endFrame) are skipped.
    */
   readConfirmed(frame: number): boolean {
+    assertSafeFrame(frame);
     let ok = true;
     for (const client of this.clients) {
       if (frame >= client.endFrame) {
@@ -569,11 +630,17 @@ export class Capacitor<C, V> {
    * blocks `complete` / `confirmed`; deactivated clients are skipped.
    */
   readDetailed(frame: number): CapacitorReadResult<V> {
+    assertSafeFrame(frame);
     const values: (V | null)[] = [];
     let confirmed = true;
     let complete = true;
     let earliestDirty: number | null = null;
     for (const client of this.clients) {
+      if (client.dirtyFrame !== Infinity) {
+        if (earliestDirty === null || client.dirtyFrame < earliestDirty) {
+          earliestDirty = client.dirtyFrame;
+        }
+      }
       if (frame >= client.endFrame) {
         values.push(null);
         continue;
@@ -588,11 +655,6 @@ export class Capacitor<C, V> {
       values.push(client.read(frame));
       if (status !== 'confirmed') confirmed = false;
       if (status === 'empty') complete = false;
-      if (client.dirtyFrame !== Infinity) {
-        if (earliestDirty === null || client.dirtyFrame < earliestDirty) {
-          earliestDirty = client.dirtyFrame;
-        }
-      }
     }
     return { confirmed, complete, rollbackFrame: earliestDirty, values };
   }
@@ -610,6 +672,7 @@ export class Capacitor<C, V> {
    * result with their own controller / participant arrays.
    */
   pendingClients(frame: number): Client<V>[] {
+    assertSafeFrame(frame);
     const pending: Client<V>[] = [];
     for (const client of this.clients) {
       if (frame >= client.endFrame) continue;
@@ -636,10 +699,18 @@ export class Capacitor<C, V> {
   size(): number {
     if (this.clients.size === 0) return 0;
     let size = Infinity;
+    let completedEnd = 0;
     for (const client of this.clients) {
-      if (client.endFrame === client.startFrame) continue;
+      // Once a deactivated client is confirmed through its exclusive end,
+      // it imposes no constraints on later frames.
+      if (client.confirmedHead >= client.endFrame) {
+        if (client.endFrame > client.startFrame) {
+          completedEnd = Math.max(completedEnd, client.endFrame);
+        }
+        continue;
+      }
       size = Math.min(size, client.confirmedHead);
     }
-    return size === Infinity ? 0 : size;
+    return size === Infinity ? completedEnd : size;
   }
 }

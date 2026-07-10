@@ -1,4 +1,5 @@
 {
+  "ignorePatterns": ["build/**", "coverage/**"],
   "semi": true,
   "singleQuote": true,
   "indentWidth": 2,

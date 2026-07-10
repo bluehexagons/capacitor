@@ -1,5 +1,16 @@
-const defaultComparator = (_a, _b) => true;
+const defaultComparator = (a, b) => Object.is(a, b);
 const DEFAULT_HISTORY_FRAMES = 1024;
+const MAX_ARRAY_LENGTH = 0xffffffff;
+const assertSafeFrame = (frame) => {
+    if (!Number.isSafeInteger(frame)) {
+        throw new Error('frame must be a safe integer');
+    }
+};
+const assertNonNegativeFrame = (frame) => {
+    if (!Number.isSafeInteger(frame) || frame < 0) {
+        throw new Error('frame must be a non-negative safe integer');
+    }
+};
 export class Client {
     comparator;
     startFrame;
@@ -20,10 +31,16 @@ export class Client {
         return this.startFrame;
     }
     constructor({ comparator = defaultComparator, startFrame, sizeOffset, historyFrames = DEFAULT_HISTORY_FRAMES, predictor, }) {
-        if (historyFrames <= 0 || !Number.isFinite(historyFrames)) {
-            throw new Error('historyFrames must be a positive finite integer');
+        if (!Number.isSafeInteger(historyFrames) ||
+            historyFrames <= 0 ||
+            historyFrames > MAX_ARRAY_LENGTH) {
+            throw new Error('historyFrames must be a positive safe integer within the maximum array length');
+        }
+        if (startFrame !== undefined && sizeOffset !== undefined && startFrame !== sizeOffset) {
+            throw new Error('startFrame and sizeOffset must match when both are provided');
         }
         const start = startFrame ?? sizeOffset ?? 0;
+        assertNonNegativeFrame(start);
         this.comparator = comparator;
         this.startFrame = start;
         this.capacity = historyFrames;
@@ -35,9 +52,7 @@ export class Client {
         this.status = new Array(historyFrames).fill('empty');
     }
     resync(frame) {
-        if (!Number.isSafeInteger(frame) || frame < 0) {
-            throw new Error('frame must be a non-negative safe integer');
-        }
+        assertNonNegativeFrame(frame);
         this.startFrame = frame;
         this.endFrame = Infinity;
         this.baseFrame = frame;
@@ -49,21 +64,19 @@ export class Client {
         this.status.fill('empty');
     }
     deactivate(frame) {
-        this.endFrame = frame;
+        assertNonNegativeFrame(frame);
+        this.endFrame = Math.min(this.endFrame, frame);
     }
     trimBefore(frame) {
+        assertSafeFrame(frame);
         const target = Math.min(frame, this.writtenHead);
-        while (this.baseFrame < target) {
-            const slot = this.baseFrame % this.capacity;
-            this.values[slot] = null;
-            this.status[slot] = 'empty';
-            this.baseFrame++;
-        }
+        this.advanceBaseFrame(target);
     }
     commit(frame, value) {
         return this.write(frame, value, 'confirmed');
     }
     commitIfEmpty(frame, value) {
+        assertSafeFrame(frame);
         if (frame < this.startFrame)
             return { kind: 'stale' };
         if (frame >= this.endFrame)
@@ -86,6 +99,7 @@ export class Client {
         return this.frameStatus(frame) !== 'empty';
     }
     predict(frame, value) {
+        assertSafeFrame(frame);
         if (frame < this.startFrame)
             return { kind: 'stale' };
         if (frame >= this.endFrame)
@@ -95,10 +109,7 @@ export class Client {
         this.ensureCapacity(frame);
         const slot = frame % this.capacity;
         if (this.status[slot] === 'confirmed') {
-            const existing = this.values[slot];
-            if (this.comparator(existing, value))
-                return { kind: 'duplicate' };
-            return { kind: 'corrected', rollbackFrame: frame };
+            return { kind: 'duplicate' };
         }
         if (this.status[slot] === 'predicted') {
             const existing = this.values[slot];
@@ -115,6 +126,7 @@ export class Client {
         return { kind: 'new' };
     }
     write(frame, value, status) {
+        assertSafeFrame(frame);
         if (frame < this.startFrame)
             return { kind: 'stale' };
         if (frame >= this.endFrame)
@@ -154,7 +166,26 @@ export class Client {
     ensureCapacity(frame) {
         const overflow = frame - (this.baseFrame + this.capacity - 1);
         if (overflow > 0)
-            this.trimBefore(this.baseFrame + overflow);
+            this.advanceBaseFrame(this.baseFrame + overflow);
+    }
+    advanceBaseFrame(target) {
+        if (target <= this.baseFrame)
+            return;
+        const distance = target - this.baseFrame;
+        if (distance >= this.capacity) {
+            this.values.fill(null);
+            this.status.fill('empty');
+        }
+        else {
+            for (let frame = this.baseFrame; frame < target; frame++) {
+                const slot = frame % this.capacity;
+                this.values[slot] = null;
+                this.status[slot] = 'empty';
+            }
+        }
+        this.baseFrame = target;
+        if (this.confirmedHead < target)
+            this.confirmedHead = target;
     }
     advanceConfirmedHead() {
         while (this.confirmedHead < this.writtenHead) {
@@ -176,6 +207,7 @@ export class Client {
         return f;
     }
     read(frame) {
+        assertSafeFrame(frame);
         if (frame < this.startFrame || frame >= this.endFrame)
             return null;
         if (frame < this.baseFrame || frame >= this.baseFrame + this.capacity)
@@ -184,6 +216,7 @@ export class Client {
         return this.status[slot] === 'empty' ? null : this.values[slot];
     }
     frameStatus(frame) {
+        assertSafeFrame(frame);
         if (frame < this.startFrame || frame >= this.endFrame)
             return 'empty';
         if (frame < this.baseFrame || frame >= this.baseFrame + this.capacity)
@@ -191,16 +224,18 @@ export class Client {
         return this.status[frame % this.capacity];
     }
     ensurePredicted(frame) {
+        assertSafeFrame(frame);
         if (this.predictor === null)
             return;
         if (frame < this.startFrame)
             return;
         const target = Math.min(frame, this.endFrame - 1);
-        let f = this.confirmedHead;
+        let f = Math.max(this.confirmedHead, this.baseFrame);
         if (f > target)
             return;
         let prev = f > this.startFrame ? this.read(f - 1) : null;
         for (; f <= target; f++) {
+            this.ensureCapacity(f);
             const slot = f % this.capacity;
             if (this.status[slot] !== 'empty') {
                 prev = this.values[slot];
@@ -214,6 +249,7 @@ export class Client {
         }
     }
     invalidatePredictedFrom(frame) {
+        assertSafeFrame(frame);
         if (frame >= this.writtenHead)
             return 0;
         const start = Math.max(frame, this.baseFrame);
@@ -251,8 +287,8 @@ export class Capacitor {
     constructor(comparator) {
         this.comparator = comparator;
     }
-    connect(props) {
-        const client = new Client({ comparator: this.comparator, ...props });
+    connect(props = {}) {
+        const client = new Client({ ...props, comparator: this.comparator });
         this.clients.add(client);
         return client;
     }
@@ -271,22 +307,27 @@ export class Capacitor {
         return earliest;
     }
     trimBefore(frame) {
+        assertSafeFrame(frame);
         for (const client of this.clients)
             client.trimBefore(frame);
     }
     ensurePredicted(frame) {
+        assertSafeFrame(frame);
         for (const client of this.clients)
             client.ensurePredicted(frame);
     }
     invalidatePredictedFrom(frame) {
+        assertSafeFrame(frame);
         for (const client of this.clients)
             client.invalidatePredictedFrom(frame);
     }
     resync(frame) {
+        assertNonNegativeFrame(frame);
         for (const client of this.clients)
             client.resync(frame);
     }
     readConfirmed(frame) {
+        assertSafeFrame(frame);
         let ok = true;
         for (const client of this.clients) {
             if (frame >= client.endFrame) {
@@ -314,11 +355,17 @@ export class Capacitor {
         return this.readConfirmed(frame);
     }
     readDetailed(frame) {
+        assertSafeFrame(frame);
         const values = [];
         let confirmed = true;
         let complete = true;
         let earliestDirty = null;
         for (const client of this.clients) {
+            if (client.dirtyFrame !== Infinity) {
+                if (earliestDirty === null || client.dirtyFrame < earliestDirty) {
+                    earliestDirty = client.dirtyFrame;
+                }
+            }
             if (frame >= client.endFrame) {
                 values.push(null);
                 continue;
@@ -335,15 +382,11 @@ export class Capacitor {
                 confirmed = false;
             if (status === 'empty')
                 complete = false;
-            if (client.dirtyFrame !== Infinity) {
-                if (earliestDirty === null || client.dirtyFrame < earliestDirty) {
-                    earliestDirty = client.dirtyFrame;
-                }
-            }
         }
         return { confirmed, complete, rollbackFrame: earliestDirty, values };
     }
     pendingClients(frame) {
+        assertSafeFrame(frame);
         const pending = [];
         for (const client of this.clients) {
             if (frame >= client.endFrame)
@@ -366,12 +409,17 @@ export class Capacitor {
         if (this.clients.size === 0)
             return 0;
         let size = Infinity;
+        let completedEnd = 0;
         for (const client of this.clients) {
-            if (client.endFrame === client.startFrame)
+            if (client.confirmedHead >= client.endFrame) {
+                if (client.endFrame > client.startFrame) {
+                    completedEnd = Math.max(completedEnd, client.endFrame);
+                }
                 continue;
+            }
             size = Math.min(size, client.confirmedHead);
         }
-        return size === Infinity ? 0 : size;
+        return size === Infinity ? completedEnd : size;
     }
 }
 //# sourceMappingURL=capacitor.js.map

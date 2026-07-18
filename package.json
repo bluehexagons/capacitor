@@ -1,10 +1,12 @@
 {
   "name": "@bluehexagons/capacitor",
-  "version": "0.5.1",
-  "description": "Capacitor is a client/server synchronization utility written for Antistatic",
+  "version": "0.6.0",
+  "description": "Frame-indexed input synchronization and transport-neutral batching utilities",
   "keywords": [
     "client-server",
     "fifo",
+    "game-networking",
+    "input-synchronization",
     "interpolation",
     "networking",
     "state-sync",

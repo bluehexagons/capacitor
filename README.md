@@ -1,11 +1,15 @@
 # capacitor
 
-Capacitor is a purpose-built FIFO interpolation-friendly server-client model synchronization utility.
+Capacitor provides reusable frame-indexed input synchronization for lockstep
+and rollback simulations. It owns bounded input history, prediction,
+correction tracking, fair outgoing frame collection, and decoded-frame
+application while leaving transport, authentication, and payload serialization
+to the game.
 
 ## Installation
 
 ```bash
-npm install https://codeload.github.com/bluehexagons/capacitor/tar.gz/refs/tags/v0.5.1
+npm install https://codeload.github.com/bluehexagons/capacitor/tar.gz/refs/tags/v0.6.0
 ```
 
 ## Requirements
@@ -43,6 +47,46 @@ if (cap.readConfirmed(0)) {
 const detailed = cap.readDetailed(0);
 const rollback = cap.consumeDirty();
 ```
+
+## Transport-neutral frame batches
+
+`collectFrameBatch` fairly selects confirmed input from multiple sources while
+respecting a total entry budget and an optional transport-specific frame span.
+`applyFrameBatch` routes decoded entries to keyed clients, classifies unknown,
+stale, future, invalid, and rejected input, and advances the shared contiguous
+receive frontier.
+
+```typescript
+import { applyFrameBatch, collectFrameBatch } from '@bluehexagons/capacitor';
+
+const outgoing = collectFrameBatch({
+  sources: [client],
+  originFrame: 120,
+  throughFrame: 128,
+  maxEntries: 255,
+  maxFrameSpan: 255,
+});
+
+// Encode outgoing.entries with any wire format. After decoding on a peer:
+const incoming = applyFrameBatch({
+  targets: new Map([[playerID, client]]),
+  entries: [{ target: playerID, frameOffset: 0, value: { value: 42 } }],
+  originFrame: 120,
+  receivedThroughFrame: 120,
+  maxFrameLead: 255,
+});
+```
+
+These helpers use ordinary TypeScript values and maps—there is no dependency on
+Node `Buffer`, sockets, or a particular packet header—so games can use them in
+browser, native-shell, client/server, or peer-to-peer transports.
+
+## Version 0.6.x — what changed
+
+Capacitor 0.6.0 adds transport-neutral outgoing frame collection and incoming
+frame application. Antistatic's generic batching, commit classification, and
+receive-frontier tests now live here; the game retains only its concrete input
+serialization and authenticated packet envelope.
 
 ## Version 0.5.x — what changed
 

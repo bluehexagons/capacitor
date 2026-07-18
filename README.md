@@ -86,7 +86,7 @@ browser, native-shell, client/server, or peer-to-peer transports.
 Capacitor 0.6.0 adds transport-neutral outgoing frame collection and incoming
 frame application. Antistatic's generic batching, commit classification, and
 receive-frontier tests now live here; the game retains only its concrete input
-serialization and authenticated packet envelope.
+serialization and game-specific packet envelope.
 
 ## Version 0.5.x — what changed
 

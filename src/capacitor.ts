@@ -356,6 +356,7 @@ export class Client<V> {
     }
     this.baseFrame = target;
     if (this.confirmedHead < target) this.confirmedHead = target;
+    this.advanceConfirmedHead();
   }
 
   /** Walks the ring forward from `confirmedHead` while slots are confirmed. */
@@ -518,6 +519,7 @@ export class Capacitor<C, V> {
   /** Reserved for future game-state checkpoint storage. Unused today. */
   commits: C[] = [];
   clients = new Set<Client<V>>();
+  private detachedDirtyFrame = Infinity;
 
   constructor(public comparator: Comparator<V>) {}
 
@@ -528,7 +530,13 @@ export class Capacitor<C, V> {
   }
 
   disconnect(client: Client<V>): void {
-    this.clients.delete(client);
+    if (!this.clients.delete(client)) {
+      return;
+    }
+    const dirtyFrame = client.consumeDirty();
+    if (dirtyFrame !== null && dirtyFrame < this.detachedDirtyFrame) {
+      this.detachedDirtyFrame = dirtyFrame;
+    }
   }
 
   /**
@@ -536,13 +544,14 @@ export class Capacitor<C, V> {
    * call (consuming the watermark on each client) or `null` if none.
    */
   consumeDirty(): number | null {
-    let earliest: number | null = null;
+    let earliest = this.detachedDirtyFrame;
+    this.detachedDirtyFrame = Infinity;
     for (const client of this.clients) {
       const f = client.consumeDirty();
       if (f === null) continue;
-      if (earliest === null || f < earliest) earliest = f;
+      if (f < earliest) earliest = f;
     }
-    return earliest;
+    return earliest === Infinity ? null : earliest;
   }
 
   /**
@@ -580,6 +589,7 @@ export class Capacitor<C, V> {
    */
   resync(frame: number): void {
     assertNonNegativeFrame(frame);
+    this.detachedDirtyFrame = Infinity;
     for (const client of this.clients) client.resync(frame);
   }
 
@@ -634,10 +644,10 @@ export class Capacitor<C, V> {
     const values: (V | null)[] = [];
     let confirmed = true;
     let complete = true;
-    let earliestDirty: number | null = null;
+    let earliestDirty = this.detachedDirtyFrame;
     for (const client of this.clients) {
       if (client.dirtyFrame !== Infinity) {
-        if (earliestDirty === null || client.dirtyFrame < earliestDirty) {
+        if (client.dirtyFrame < earliestDirty) {
           earliestDirty = client.dirtyFrame;
         }
       }
@@ -656,7 +666,12 @@ export class Capacitor<C, V> {
       if (status !== 'confirmed') confirmed = false;
       if (status === 'empty') complete = false;
     }
-    return { confirmed, complete, rollbackFrame: earliestDirty, values };
+    return {
+      confirmed,
+      complete,
+      rollbackFrame: earliestDirty === Infinity ? null : earliestDirty,
+      values,
+    };
   }
 
   /**
@@ -690,6 +705,7 @@ export class Capacitor<C, V> {
   clear(): void {
     this.clients.clear();
     this.commits = [];
+    this.detachedDirtyFrame = Infinity;
   }
 
   /**

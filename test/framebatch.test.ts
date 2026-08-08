@@ -10,6 +10,7 @@ import {
 type Input = { player: number; value: number };
 
 const makeSource = (player: number, confirmedHead: number, startFrame = 0): FrameSource<Input> => ({
+  baseFrame: startFrame,
   startFrame,
   confirmedHead,
   read: (frame) => (frame < confirmedHead && frame >= startFrame ? { player, value: frame } : null),
@@ -45,7 +46,31 @@ describe('collectFrameBatch', () => {
     expect(batch.entries.filter((entry) => entry.sourceIndex === 1)).toHaveLength(127);
   });
 
-  test('bounds total entries when there are more sources than slots', () => {
+  test('advances shared progress only through the slowest source', () => {
+    const batch = collectFrameBatch({
+      sources: [makeSource(1, 5), makeSource(2, 2)],
+      originFrame: 0,
+      throughFrame: 5,
+      maxEntries: 16,
+    });
+
+    expect(batch.sentThroughFrame).toBe(2);
+    expect(batch.entries.filter((entry) => entry.sourceIndex === 0)).toHaveLength(5);
+    expect(batch.entries.filter((entry) => entry.sourceIndex === 1)).toHaveLength(2);
+  });
+
+  test('does not treat frames before a late source starts as discarded history', () => {
+    const batch = collectFrameBatch({
+      sources: [makeSource(1, 5), makeSource(2, 7, 5)],
+      originFrame: 3,
+      throughFrame: 7,
+      maxEntries: 16,
+    });
+
+    expect(batch.sentThroughFrame).toBe(5);
+  });
+
+  test('does not advance when the entry budget cannot represent every source', () => {
     const batch = collectFrameBatch({
       sources: Array.from({ length: 300 }, (_, player) => makeSource(player, 1)),
       originFrame: 0,
@@ -54,7 +79,7 @@ describe('collectFrameBatch', () => {
     });
 
     expect(batch.entries).toHaveLength(255);
-    expect(batch.sentThroughFrame).toBe(1);
+    expect(batch.sentThroughFrame).toBe(0);
   });
 
   test('respects a transport-specific frame span', () => {
@@ -70,10 +95,11 @@ describe('collectFrameBatch', () => {
     expect(batch.sentThroughFrame).toBe(14);
   });
 
-  test('skips missing source values without fabricating frames', () => {
+  test('stops progress at a missing value below the confirmed head', () => {
     const batch = collectFrameBatch({
       sources: [
         {
+          baseFrame: 5,
           startFrame: 5,
           confirmedHead: 8,
           read: (frame) => (frame === 6 ? null : { player: 1, value: frame }),
@@ -84,8 +110,8 @@ describe('collectFrameBatch', () => {
       maxEntries: 8,
     });
 
-    expect(batch.entries.map((entry) => entry.frame)).toEqual([5, 7]);
-    expect(batch.sentThroughFrame).toBe(8);
+    expect(batch.entries.map((entry) => entry.frame)).toEqual([5]);
+    expect(batch.sentThroughFrame).toBe(6);
   });
 
   test('validates collection bounds', () => {
@@ -97,12 +123,28 @@ describe('collectFrameBatch', () => {
     ).toThrow('maxEntries must be a positive safe integer');
     expect(() =>
       collectFrameBatch({
-        sources: [{ startFrame: 2, confirmedHead: 1, read: () => null }],
+        sources: [{ baseFrame: 2, startFrame: 2, confirmedHead: 1, read: () => null }],
         originFrame: 0,
         throughFrame: 1,
         maxEntries: 1,
       })
     ).toThrow('confirmedHead must be at or after startFrame');
+  });
+
+  test('fails closed when the requested origin has fallen out of history', () => {
+    const source = new Client<Input>({ historyFrames: 4 });
+    for (let frame = 0; frame < 6; frame++) {
+      source.commit(frame, { player: 1, value: frame });
+    }
+
+    expect(() =>
+      collectFrameBatch({
+        sources: [source],
+        originFrame: 0,
+        throughFrame: 6,
+        maxEntries: 8,
+      })
+    ).toThrow('no longer retains originFrame');
   });
 });
 

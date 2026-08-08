@@ -187,6 +187,17 @@ describe('Client', () => {
     expect(client.read(3)?.value).toBe(3);
   });
 
+  test('window advancement recovers a confirmed head at the new base', () => {
+    const client = new Client<Packet>({ comparator: compare, historyFrames: 4 });
+    client.commit(2, { value: 2 });
+
+    client.predict(4, { value: 4 });
+    client.predict(5, { value: 5 });
+
+    expect(client.baseFrame).toBe(2);
+    expect(client.confirmedHead).toBe(3);
+  });
+
   test('deactivate stops accepting commits at endFrame', () => {
     const cap = new Capacitor<State, Packet>(compare);
     const client = cap.connect({});
@@ -554,6 +565,22 @@ describe('Capacitor lockstep helpers', () => {
     c1.commit(5, { value: 1 }); // corrected at 5
     c2.commit(3, { value: 1 }); // corrected at 3
     expect(cap.consumeDirty()).toBe(3);
+    expect(cap.consumeDirty()).toBe(null);
+  });
+
+  test('disconnect preserves an outstanding correction watermark', () => {
+    const cap = new Capacitor<State, Packet>(compare);
+    const client = cap.connect({});
+    client.predict(3, { value: 0 });
+    client.commit(3, { value: 1 });
+
+    cap.disconnect(client);
+
+    expect(cap.readDetailed(3).rollbackFrame).toBe(3);
+    expect(cap.consumeDirty()).toBe(3);
+    expect(cap.consumeDirty()).toBe(null);
+
+    cap.disconnect(client);
     expect(cap.consumeDirty()).toBe(null);
   });
 

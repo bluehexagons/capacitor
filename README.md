@@ -9,7 +9,7 @@ to the game.
 ## Installation
 
 ```bash
-npm install https://codeload.github.com/bluehexagons/capacitor/tar.gz/refs/tags/v0.6.0
+npm install https://codeload.github.com/bluehexagons/capacitor/tar.gz/refs/tags/v0.6.1
 ```
 
 ## Requirements
@@ -52,6 +52,9 @@ const rollback = cap.consumeDirty();
 
 `collectFrameBatch` fairly selects confirmed input from multiple sources while
 respecting a total entry budget and an optional transport-specific frame span.
+It reports progress only through the slowest fully represented source and fails
+closed if the requested origin has already fallen out of a source's retained
+history.
 `applyFrameBatch` routes decoded entries to keyed clients, classifies unknown,
 stale, future, invalid, and rejected input, and advances the shared contiguous
 receive frontier.
@@ -87,6 +90,10 @@ Capacitor 0.6.0 adds transport-neutral outgoing frame collection and incoming
 frame application. Antistatic's generic batching, commit classification, and
 receive-frontier tests now live here; the game retains only its concrete input
 serialization and game-specific packet envelope.
+
+Capacitor 0.6.1 keeps shared outgoing progress behind the slowest contiguous
+source, preserves pending correction state when a client disconnects, and
+recovers confirmed progress immediately when the bounded window advances.
 
 ## Version 0.5.x — what changed
 

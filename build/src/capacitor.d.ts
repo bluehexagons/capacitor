@@ -67,6 +67,7 @@ export declare class Capacitor<C, V> {
     comparator: Comparator<V>;
     commits: C[];
     clients: Set<Client<V>>;
+    private detachedDirtyFrame;
     constructor(comparator: Comparator<V>);
     connect(props?: CapacitorClientProps<V>): Client<V>;
     disconnect(client: Client<V>): void;

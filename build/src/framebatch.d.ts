@@ -1,6 +1,7 @@
 import type { CommitResult } from './capacitor.js';
 export interface FrameSource<V> {
     startFrame: number;
+    baseFrame: number;
     confirmedHead: number;
     read(frame: number): V | null;
 }

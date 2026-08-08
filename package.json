@@ -1,6 +1,6 @@
 {
   "name": "@bluehexagons/capacitor",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Frame-indexed input synchronization and transport-neutral batching utilities",
   "keywords": [
     "client-server",

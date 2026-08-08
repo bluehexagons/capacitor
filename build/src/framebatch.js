@@ -22,23 +22,32 @@ export const collectFrameBatch = ({ sources, originFrame, throughFrame, maxEntri
     const fairFrameSpan = Math.max(1, Math.floor(maxEntries / sources.length));
     const frameSpan = Math.min(maxFrameSpan, fairFrameSpan);
     const entries = [];
-    let sentThroughFrame = originFrame;
-    for (let sourceIndex = 0; sourceIndex < sources.length && entries.length < maxEntries; sourceIndex++) {
+    let sentThroughFrame = throughFrame;
+    for (let sourceIndex = 0; sourceIndex < sources.length; sourceIndex++) {
         const source = sources[sourceIndex];
         assertNonNegativeSafeInteger(`sources[${sourceIndex}].startFrame`, source.startFrame);
+        assertNonNegativeSafeInteger(`sources[${sourceIndex}].baseFrame`, source.baseFrame);
         assertNonNegativeSafeInteger(`sources[${sourceIndex}].confirmedHead`, source.confirmedHead);
+        if (source.baseFrame < source.startFrame) {
+            throw new Error(`sources[${sourceIndex}].baseFrame must be at or after startFrame`);
+        }
         if (source.confirmedHead < source.startFrame) {
             throw new Error(`sources[${sourceIndex}].confirmedHead must be at or after startFrame`);
         }
-        const start = Math.max(source.startFrame, originFrame);
+        if (originFrame < source.baseFrame && source.baseFrame > source.startFrame) {
+            throw new Error(`sources[${sourceIndex}] no longer retains originFrame`);
+        }
+        const start = Math.max(source.startFrame, source.baseFrame, originFrame);
         const end = Math.min(throughFrame, source.confirmedHead, originFrame + frameSpan);
+        let sourceSentThroughFrame = Math.min(throughFrame, start);
         for (let frame = start; frame < end && entries.length < maxEntries; frame++) {
             const value = source.read(frame);
             if (value === null)
-                continue;
+                break;
             entries.push({ sourceIndex, frame, frameOffset: frame - originFrame, value });
-            sentThroughFrame = Math.max(sentThroughFrame, frame + 1);
+            sourceSentThroughFrame = frame + 1;
         }
+        sentThroughFrame = Math.min(sentThroughFrame, sourceSentThroughFrame);
     }
     return { entries, sentThroughFrame };
 };

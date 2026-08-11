@@ -101,6 +101,9 @@ export const collectFrameBatch = <V>({
     if (source.confirmedHead < source.startFrame) {
       throw new Error(`sources[${sourceIndex}].confirmedHead must be at or after startFrame`);
     }
+    if (source.confirmedHead < source.baseFrame) {
+      throw new Error(`sources[${sourceIndex}].confirmedHead must be at or after baseFrame`);
+    }
     if (originFrame < source.baseFrame && source.baseFrame > source.startFrame) {
       throw new Error(`sources[${sourceIndex}] no longer retains originFrame`);
     }

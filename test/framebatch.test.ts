@@ -129,6 +129,14 @@ describe('collectFrameBatch', () => {
         maxEntries: 1,
       })
     ).toThrow('confirmedHead must be at or after startFrame');
+    expect(() =>
+      collectFrameBatch({
+        sources: [{ baseFrame: 2, startFrame: 0, confirmedHead: 1, read: () => null }],
+        originFrame: 2,
+        throughFrame: 3,
+        maxEntries: 1,
+      })
+    ).toThrow('confirmedHead must be at or after baseFrame');
   });
 
   test('fails closed when the requested origin has fallen out of history', () => {

@@ -38,7 +38,7 @@
     }
   },
   "scripts": {
-    "test": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js",
+    "test": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js build/test",
     "lint": "oxlint .",
     "format": "oxfmt --write .",
     "format:check": "oxfmt --check .",
@@ -54,12 +54,11 @@
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",
-    "@types/node": "^26.1.0",
+    "@types/node": "^26.2.0",
     "jest": "^30.4.2",
-    "oxfmt": "^0.57.0",
-    "oxlint": "^1.72.0",
-    "ts-jest": "^29.4.11",
-    "typescript": "^6.0.3"
+    "oxfmt": "^0.63.0",
+    "oxlint": "^1.78.0",
+    "typescript": "^7.0.2"
   },
   "engines": {
     "node": ">=24.0.0"

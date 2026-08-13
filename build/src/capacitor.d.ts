@@ -1,10 +1,14 @@
 export type Comparator<V> = (a: V, b: V) => boolean;
+export type ConfirmedConflictPolicy = 'reject' | 'replace';
 export type CommitResult = {
     kind: 'new';
 } | {
     kind: 'duplicate';
 } | {
     kind: 'corrected';
+    rollbackFrame: number;
+} | {
+    kind: 'conflict';
     rollbackFrame: number;
 } | {
     kind: 'stale';
@@ -21,6 +25,7 @@ export interface ClientProps<V> {
     sizeOffset?: number;
     historyFrames?: number;
     predictor?: Predictor<V>;
+    confirmedConflict?: ConfirmedConflictPolicy;
 }
 export type CapacitorClientProps<V> = Omit<ClientProps<V>, 'comparator'>;
 export declare class Client<V> {
@@ -33,12 +38,13 @@ export declare class Client<V> {
     writtenHead: number;
     dirtyFrame: number;
     predictor: Predictor<V> | null;
+    confirmedConflict: ConfirmedConflictPolicy;
     private values;
     private status;
     cache: V | null;
     get size(): number;
     get sizeOffset(): number;
-    constructor({ comparator, startFrame, sizeOffset, historyFrames, predictor, }: ClientProps<V>);
+    constructor({ comparator, startFrame, sizeOffset, historyFrames, predictor, confirmedConflict, }: ClientProps<V>);
     resync(frame: number): void;
     deactivate(frame: number): void;
     trimBefore(frame: number): void;
@@ -62,10 +68,20 @@ export interface CapacitorReadResult<V> {
     complete: boolean;
     rollbackFrame: number | null;
     values: (V | null)[];
+    clients: CapacitorClientReadResult<V>[];
 }
-export declare class Capacitor<C, V> {
+export interface CapacitorClientReadResult<V> {
+    client: Client<V>;
+    status: ClientFrameStatus;
+    value: V | null;
+    active: boolean;
+}
+export interface ResolveFrameOptions {
+    predict?: boolean;
+    maxPredictionLead?: number;
+}
+export declare class Capacitor<V> {
     comparator: Comparator<V>;
-    commits: C[];
     clients: Set<Client<V>>;
     private detachedDirtyFrame;
     constructor(comparator: Comparator<V>);
@@ -79,6 +95,7 @@ export declare class Capacitor<C, V> {
     readConfirmed(frame: number): boolean;
     read(frame: number): boolean;
     readDetailed(frame: number): CapacitorReadResult<V>;
+    resolveFrame(frame: number, options?: ResolveFrameOptions): CapacitorReadResult<V>;
     pendingClients(frame: number): Client<V>[];
     clear(): void;
     size(): number;

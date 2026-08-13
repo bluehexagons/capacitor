@@ -15,6 +15,8 @@
 
 export type Comparator<V> = (a: V, b: V) => boolean;
 
+export type ConfirmedConflictPolicy = 'reject' | 'replace';
+
 export type CommitResult =
   /** Frame had no value previously; first commit at this slot. */
   | { kind: 'new' }
@@ -22,6 +24,8 @@ export type CommitResult =
   | { kind: 'duplicate' }
   /** Frame held a different value; replay from `rollbackFrame`. */
   | { kind: 'corrected'; rollbackFrame: number }
+  /** A confirmed frame disagreed with another confirmed value; stored input was preserved. */
+  | { kind: 'conflict'; rollbackFrame: number }
   /** Frame is before this client's `startFrame`; commit ignored. */
   | { kind: 'stale' }
   /** Frame is older than `baseFrame`; window has already trimmed it. */
@@ -71,6 +75,13 @@ export interface ClientProps<V> {
    * `prevValue` is `null`; returning `null` leaves the slot empty.
    */
   predictor?: Predictor<V>;
+  /**
+   * Policy for two different confirmed values at the same frame. Confirmed
+   * input is immutable by default, so disagreements return `conflict` without
+   * changing the stored value. `replace` retains the legacy last-arrival-wins
+   * behavior and reports `corrected`.
+   */
+  confirmedConflict?: ConfirmedConflictPolicy;
 }
 
 /** Per-client options accepted by `Capacitor.connect()`. */
@@ -121,6 +132,7 @@ export class Client<V> {
   dirtyFrame: number = Infinity;
   /** Optional pluggable prediction strategy; see `ensurePredicted`. */
   predictor: Predictor<V> | null;
+  confirmedConflict: ConfirmedConflictPolicy;
 
   private values: (V | null)[];
   private status: ClientFrameStatus[];
@@ -143,6 +155,7 @@ export class Client<V> {
     sizeOffset,
     historyFrames = DEFAULT_HISTORY_FRAMES,
     predictor,
+    confirmedConflict = 'reject',
   }: ClientProps<V>) {
     if (
       !Number.isSafeInteger(historyFrames) ||
@@ -156,6 +169,9 @@ export class Client<V> {
     if (startFrame !== undefined && sizeOffset !== undefined && startFrame !== sizeOffset) {
       throw new Error('startFrame and sizeOffset must match when both are provided');
     }
+    if (confirmedConflict !== 'reject' && confirmedConflict !== 'replace') {
+      throw new Error("confirmedConflict must be 'reject' or 'replace'");
+    }
     const start = startFrame ?? sizeOffset ?? 0;
     assertNonNegativeFrame(start);
     this.comparator = comparator;
@@ -165,6 +181,7 @@ export class Client<V> {
     this.confirmedHead = start;
     this.writtenHead = start;
     this.predictor = predictor ?? null;
+    this.confirmedConflict = confirmedConflict;
     this.values = new Array<V | null>(historyFrames).fill(null);
     this.status = new Array<ClientFrameStatus>(historyFrames).fill('empty');
   }
@@ -298,9 +315,9 @@ export class Client<V> {
     if (prevStatus === 'confirmed') {
       const existing = this.values[slot] as V;
       if (this.comparator(existing, value)) return { kind: 'duplicate' };
-      // A confirmed-vs-confirmed disagreement is the strongest correction
-      // signal; preserve the new value (the wire is authoritative) and
-      // mark the watermark.
+      if (this.confirmedConflict === 'reject') {
+        return { kind: 'conflict', rollbackFrame: frame };
+      }
       this.values[slot] = value;
       this.markDirty(frame);
       return { kind: 'corrected', rollbackFrame: frame };
@@ -507,6 +524,23 @@ export interface CapacitorReadResult<V> {
   rollbackFrame: number | null;
   /** Per-client values in client-iteration order. `null` for missing. */
   values: (V | null)[];
+  /** Client-associated results; prefer this over correlating `values` by iteration order. */
+  clients: CapacitorClientReadResult<V>[];
+}
+
+export interface CapacitorClientReadResult<V> {
+  client: Client<V>;
+  status: ClientFrameStatus;
+  value: V | null;
+  /** False when the client is deactivated at this frame. */
+  active: boolean;
+}
+
+export interface ResolveFrameOptions {
+  /** Run configured predictors before reading. Default false. */
+  predict?: boolean;
+  /** Refuse prediction this many frames at or beyond each client's confirmed head. */
+  maxPredictionLead?: number;
 }
 
 /**
@@ -515,9 +549,7 @@ export interface CapacitorReadResult<V> {
  * only need "did everyone produce a frame yet?"; rollback drivers
  * should prefer `readDetailed()` and `consumeDirty()`.
  */
-export class Capacitor<C, V> {
-  /** Reserved for future game-state checkpoint storage. Unused today. */
-  commits: C[] = [];
+export class Capacitor<V> {
   clients = new Set<Client<V>>();
   private detachedDirtyFrame = Infinity;
 
@@ -642,6 +674,7 @@ export class Capacitor<C, V> {
   readDetailed(frame: number): CapacitorReadResult<V> {
     assertSafeFrame(frame);
     const values: (V | null)[] = [];
+    const clients: CapacitorClientReadResult<V>[] = [];
     let confirmed = true;
     let complete = true;
     let earliestDirty = this.detachedDirtyFrame;
@@ -653,16 +686,20 @@ export class Capacitor<C, V> {
       }
       if (frame >= client.endFrame) {
         values.push(null);
+        clients.push({ client, status: 'empty', value: null, active: false });
         continue;
       }
       if (frame < client.startFrame) {
         values.push(null);
+        clients.push({ client, status: 'empty', value: null, active: true });
         confirmed = false;
         complete = false;
         continue;
       }
       const status = client.frameStatus(frame);
-      values.push(client.read(frame));
+      const value = client.read(frame);
+      values.push(value);
+      clients.push({ client, status, value, active: true });
       if (status !== 'confirmed') confirmed = false;
       if (status === 'empty') complete = false;
     }
@@ -671,7 +708,32 @@ export class Capacitor<C, V> {
       complete,
       rollbackFrame: earliestDirty === Infinity ? null : earliestDirty,
       values,
+      clients,
     };
+  }
+
+  /**
+   * Optionally predict and then return client-associated frame values. A
+   * finite prediction lead prevents callers from running arbitrarily far
+   * ahead of confirmed input.
+   */
+  resolveFrame(frame: number, options: ResolveFrameOptions = {}): CapacitorReadResult<V> {
+    assertSafeFrame(frame);
+    const { predict = false, maxPredictionLead = Infinity } = options;
+    if (
+      maxPredictionLead !== Infinity &&
+      (!Number.isSafeInteger(maxPredictionLead) || maxPredictionLead <= 0)
+    ) {
+      throw new Error('maxPredictionLead must be a positive safe integer or Infinity');
+    }
+    if (predict) {
+      for (const client of this.clients) {
+        if (frame < client.startFrame || frame >= client.endFrame) continue;
+        if (frame - client.confirmedHead >= maxPredictionLead) continue;
+        client.ensurePredicted(frame);
+      }
+    }
+    return this.readDetailed(frame);
   }
 
   /**
@@ -704,7 +766,6 @@ export class Capacitor<C, V> {
 
   clear(): void {
     this.clients.clear();
-    this.commits = [];
     this.detachedDirtyFrame = Infinity;
   }
 

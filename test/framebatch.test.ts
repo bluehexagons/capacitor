@@ -13,6 +13,7 @@ const makeSource = (player: number, confirmedHead: number, startFrame = 0): Fram
   baseFrame: startFrame,
   startFrame,
   confirmedHead,
+  endFrame: Infinity,
   read: (frame) => (frame < confirmedHead && frame >= startFrame ? { player, value: frame } : null),
 });
 
@@ -70,16 +71,30 @@ describe('collectFrameBatch', () => {
     expect(batch.sentThroughFrame).toBe(5);
   });
 
-  test('does not advance when the entry budget cannot represent every source', () => {
-    const batch = collectFrameBatch({
-      sources: Array.from({ length: 300 }, (_, player) => makeSource(player, 1)),
-      originFrame: 0,
-      throughFrame: 1,
-      maxEntries: 255,
-    });
+  test('rejects an entry budget that cannot represent every participating source', () => {
+    expect(() =>
+      collectFrameBatch({
+        sources: Array.from({ length: 300 }, (_, player) => makeSource(player, 1)),
+        originFrame: 0,
+        throughFrame: 1,
+        maxEntries: 255,
+      })
+    ).toThrow('maxEntries must be at least the number of participating sources');
+  });
 
-    expect(batch.entries).toHaveLength(255);
-    expect(batch.sentThroughFrame).toBe(0);
+  test('completed sources do not constrain later progress', () => {
+    const ended = new Client<Input>({});
+    ended.commit(0, { player: 1, value: 0 });
+    ended.deactivate(1);
+
+    expect(
+      collectFrameBatch({
+        sources: [ended],
+        originFrame: 1,
+        throughFrame: 4,
+        maxEntries: 1,
+      })
+    ).toEqual({ entries: [], sentThroughFrame: 4 });
   });
 
   test('respects a transport-specific frame span', () => {
@@ -102,6 +117,7 @@ describe('collectFrameBatch', () => {
           baseFrame: 5,
           startFrame: 5,
           confirmedHead: 8,
+          endFrame: Infinity,
           read: (frame) => (frame === 6 ? null : { player: 1, value: frame }),
         },
       ],
@@ -123,7 +139,9 @@ describe('collectFrameBatch', () => {
     ).toThrow('maxEntries must be a positive safe integer');
     expect(() =>
       collectFrameBatch({
-        sources: [{ baseFrame: 2, startFrame: 2, confirmedHead: 1, read: () => null }],
+        sources: [
+          { baseFrame: 2, startFrame: 2, confirmedHead: 1, endFrame: Infinity, read: () => null },
+        ],
         originFrame: 0,
         throughFrame: 1,
         maxEntries: 1,
@@ -131,7 +149,9 @@ describe('collectFrameBatch', () => {
     ).toThrow('confirmedHead must be at or after startFrame');
     expect(() =>
       collectFrameBatch({
-        sources: [{ baseFrame: 2, startFrame: 0, confirmedHead: 1, read: () => null }],
+        sources: [
+          { baseFrame: 2, startFrame: 0, confirmedHead: 1, endFrame: Infinity, read: () => null },
+        ],
         originFrame: 2,
         throughFrame: 3,
         maxEntries: 1,
@@ -193,6 +213,9 @@ describe('applyFrameBatch', () => {
   test('classifies unknown, stale, future, invalid, and target-rejected entries', () => {
     const target = new Client<Input>({ startFrame: 10, historyFrames: 4 });
     const rejectingTarget = {
+      baseFrame: 10,
+      capacity: 4,
+      endFrame: Infinity,
       startFrame: 10,
       confirmedHead: 10,
       commit: () => ({ kind: 'inactive' as const }),
@@ -251,6 +274,9 @@ describe('applyFrameBatch', () => {
   test('does not advance across a gap in any target', () => {
     let confirmedHead = 10;
     const target: FrameTarget<Input> = {
+      baseFrame: 10,
+      capacity: 16,
+      endFrame: Infinity,
       startFrame: 10,
       get confirmedHead() {
         return confirmedHead;
@@ -272,6 +298,43 @@ describe('applyFrameBatch', () => {
     expect(applied.receivedThroughFrame).toBe(11);
     expect(applied.acceptedEntries).toHaveLength(1);
     expect(applied.rejectedEntries).toEqual([entry(1, 1, 11), entry(1, 0, 10)]);
+  });
+
+  test('rejects input that would evict unresolved retained history', () => {
+    const target = new Client<Input>({ historyFrames: 4 });
+    const applied = applyFrameBatch({
+      targets: new Map([[1, target]]),
+      entries: [entry(1, 4, 4)],
+      originFrame: 0,
+      receivedThroughFrame: 0,
+      maxFrameLead: 8,
+    });
+
+    expect(applied.futureEntries).toEqual([entry(1, 4, 4)]);
+    expect(target.baseFrame).toBe(0);
+    expect(applied.receivedThroughFrame).toBe(0);
+  });
+
+  test('recomputes progress for empty batches and ignores completed targets', () => {
+    const live = new Client<Input>({});
+    live.commit(0, { player: 1, value: 0 });
+    live.commit(1, { player: 1, value: 1 });
+    const ended = new Client<Input>({});
+    ended.commit(0, { player: 2, value: 0 });
+    ended.deactivate(1);
+
+    const applied = applyFrameBatch({
+      targets: new Map([
+        [1, live],
+        [2, ended],
+      ]),
+      entries: [],
+      originFrame: 0,
+      receivedThroughFrame: 0,
+      maxFrameLead: 8,
+    });
+
+    expect(applied.receivedThroughFrame).toBe(2);
   });
 
   test('validates application coordinates', () => {

@@ -12,7 +12,7 @@
     "noImplicitAny": true,
     "noImplicitReturns": true,
     "noImplicitThis": true,
-    "lib": ["ESNext"],
+    "lib": ["ES2022"],
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "isolatedModules": true,
@@ -20,7 +20,7 @@
     "sourceMap": true,
     "inlineSources": true,
     "strict": true,
-    "target": "ESNext",
+    "target": "ES2022",
     "types": ["node", "jest"]
   },
   "include": ["src/**/*.ts", "test/**/*.ts"]

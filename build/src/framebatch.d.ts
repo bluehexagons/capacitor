@@ -3,11 +3,15 @@ export interface FrameSource<V> {
     startFrame: number;
     baseFrame: number;
     confirmedHead: number;
+    endFrame: number;
     read(frame: number): V | null;
 }
 export interface FrameTarget<V> {
     startFrame: number;
     confirmedHead: number;
+    baseFrame: number;
+    capacity: number;
+    endFrame: number;
     commit(frame: number, value: V): CommitResult;
 }
 export interface CollectedFrame<V> {
@@ -53,4 +57,5 @@ export interface ApplyFrameBatchOptions<K, V> {
     receivedThroughFrame: number;
     maxFrameLead: number;
 }
+export declare const confirmedFrameFrontier: <V>(targets: Iterable<FrameTarget<V>>, floor?: number) => number;
 export declare const applyFrameBatch: <K, V>({ targets, entries, originFrame, receivedThroughFrame, maxFrameLead, }: ApplyFrameBatchOptions<K, V>) => AppliedFrameBatch<K, V>;

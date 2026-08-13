@@ -21,6 +21,7 @@ export class Client {
     writtenHead;
     dirtyFrame = Infinity;
     predictor;
+    confirmedConflict;
     values;
     status;
     cache = null;
@@ -30,7 +31,7 @@ export class Client {
     get sizeOffset() {
         return this.startFrame;
     }
-    constructor({ comparator = defaultComparator, startFrame, sizeOffset, historyFrames = DEFAULT_HISTORY_FRAMES, predictor, }) {
+    constructor({ comparator = defaultComparator, startFrame, sizeOffset, historyFrames = DEFAULT_HISTORY_FRAMES, predictor, confirmedConflict = 'reject', }) {
         if (!Number.isSafeInteger(historyFrames) ||
             historyFrames <= 0 ||
             historyFrames > MAX_ARRAY_LENGTH) {
@@ -38,6 +39,9 @@ export class Client {
         }
         if (startFrame !== undefined && sizeOffset !== undefined && startFrame !== sizeOffset) {
             throw new Error('startFrame and sizeOffset must match when both are provided');
+        }
+        if (confirmedConflict !== 'reject' && confirmedConflict !== 'replace') {
+            throw new Error("confirmedConflict must be 'reject' or 'replace'");
         }
         const start = startFrame ?? sizeOffset ?? 0;
         assertNonNegativeFrame(start);
@@ -48,6 +52,7 @@ export class Client {
         this.confirmedHead = start;
         this.writtenHead = start;
         this.predictor = predictor ?? null;
+        this.confirmedConflict = confirmedConflict;
         this.values = new Array(historyFrames).fill(null);
         this.status = new Array(historyFrames).fill('empty');
     }
@@ -140,6 +145,9 @@ export class Client {
             const existing = this.values[slot];
             if (this.comparator(existing, value))
                 return { kind: 'duplicate' };
+            if (this.confirmedConflict === 'reject') {
+                return { kind: 'conflict', rollbackFrame: frame };
+            }
             this.values[slot] = value;
             this.markDirty(frame);
             return { kind: 'corrected', rollbackFrame: frame };
@@ -283,7 +291,6 @@ export class Client {
 }
 export class Capacitor {
     comparator;
-    commits = [];
     clients = new Set();
     detachedDirtyFrame = Infinity;
     constructor(comparator) {
@@ -367,6 +374,7 @@ export class Capacitor {
     readDetailed(frame) {
         assertSafeFrame(frame);
         const values = [];
+        const clients = [];
         let confirmed = true;
         let complete = true;
         let earliestDirty = this.detachedDirtyFrame;
@@ -378,16 +386,20 @@ export class Capacitor {
             }
             if (frame >= client.endFrame) {
                 values.push(null);
+                clients.push({ client, status: 'empty', value: null, active: false });
                 continue;
             }
             if (frame < client.startFrame) {
                 values.push(null);
+                clients.push({ client, status: 'empty', value: null, active: true });
                 confirmed = false;
                 complete = false;
                 continue;
             }
             const status = client.frameStatus(frame);
-            values.push(client.read(frame));
+            const value = client.read(frame);
+            values.push(value);
+            clients.push({ client, status, value, active: true });
             if (status !== 'confirmed')
                 confirmed = false;
             if (status === 'empty')
@@ -398,7 +410,26 @@ export class Capacitor {
             complete,
             rollbackFrame: earliestDirty === Infinity ? null : earliestDirty,
             values,
+            clients,
         };
+    }
+    resolveFrame(frame, options = {}) {
+        assertSafeFrame(frame);
+        const { predict = false, maxPredictionLead = Infinity } = options;
+        if (maxPredictionLead !== Infinity &&
+            (!Number.isSafeInteger(maxPredictionLead) || maxPredictionLead <= 0)) {
+            throw new Error('maxPredictionLead must be a positive safe integer or Infinity');
+        }
+        if (predict) {
+            for (const client of this.clients) {
+                if (frame < client.startFrame || frame >= client.endFrame)
+                    continue;
+                if (frame - client.confirmedHead >= maxPredictionLead)
+                    continue;
+                client.ensurePredicted(frame);
+            }
+        }
+        return this.readDetailed(frame);
     }
     pendingClients(frame) {
         assertSafeFrame(frame);
@@ -418,7 +449,6 @@ export class Capacitor {
     }
     clear() {
         this.clients.clear();
-        this.commits = [];
         this.detachedDirtyFrame = Infinity;
     }
     size() {

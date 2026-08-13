@@ -8,6 +8,8 @@ export interface FrameSource<V> {
   baseFrame: number;
   /** First absolute frame not yet confirmed by this source. */
   confirmedHead: number;
+  /** Exclusive end of participation; Infinity while active. */
+  endFrame: number;
   read(frame: number): V | null;
 }
 
@@ -17,6 +19,12 @@ export interface FrameTarget<V> {
   startFrame: number;
   /** First absolute frame not yet contiguously confirmed by this target. */
   confirmedHead: number;
+  /** Oldest absolute frame still retained by this target. */
+  baseFrame: number;
+  /** Number of frame coordinates retained by this target. */
+  capacity: number;
+  /** Exclusive end of participation; Infinity while active. */
+  endFrame: number;
   commit(frame: number, value: V): CommitResult;
 }
 
@@ -85,16 +93,15 @@ export const collectFrameBatch = <V>({
   if (sources.length === 0 || throughFrame === originFrame) {
     return { entries: [], sentThroughFrame: originFrame };
   }
-  const fairFrameSpan = Math.max(1, Math.floor(maxEntries / sources.length));
-  const frameSpan = Math.min(maxFrameSpan, fairFrameSpan);
-  const entries: CollectedFrame<V>[] = [];
-  let sentThroughFrame = throughFrame;
-
+  let participatingSources = 0;
   for (let sourceIndex = 0; sourceIndex < sources.length; sourceIndex++) {
     const source = sources[sourceIndex];
     assertNonNegativeSafeInteger(`sources[${sourceIndex}].startFrame`, source.startFrame);
     assertNonNegativeSafeInteger(`sources[${sourceIndex}].baseFrame`, source.baseFrame);
     assertNonNegativeSafeInteger(`sources[${sourceIndex}].confirmedHead`, source.confirmedHead);
+    if (source.endFrame !== Infinity) {
+      assertNonNegativeSafeInteger(`sources[${sourceIndex}].endFrame`, source.endFrame);
+    }
     if (source.baseFrame < source.startFrame) {
       throw new Error(`sources[${sourceIndex}].baseFrame must be at or after startFrame`);
     }
@@ -104,11 +111,39 @@ export const collectFrameBatch = <V>({
     if (source.confirmedHead < source.baseFrame) {
       throw new Error(`sources[${sourceIndex}].confirmedHead must be at or after baseFrame`);
     }
-    if (originFrame < source.baseFrame && source.baseFrame > source.startFrame) {
+    if (source.endFrame < source.startFrame) {
+      throw new Error(`sources[${sourceIndex}].endFrame must be at or after startFrame`);
+    }
+    if (
+      originFrame < source.baseFrame &&
+      source.baseFrame > source.startFrame &&
+      originFrame < source.endFrame
+    ) {
       throw new Error(`sources[${sourceIndex}] no longer retains originFrame`);
     }
+    if (source.startFrame < throughFrame && source.endFrame > originFrame) {
+      participatingSources++;
+    }
+  }
+  if (participatingSources > maxEntries) {
+    throw new Error('maxEntries must be at least the number of participating sources');
+  }
+
+  const fairFrameSpan = Math.max(1, Math.floor(maxEntries / Math.max(1, participatingSources)));
+  const frameSpan = Math.min(maxFrameSpan, fairFrameSpan);
+  const entries: CollectedFrame<V>[] = [];
+  let sentThroughFrame = throughFrame;
+
+  for (let sourceIndex = 0; sourceIndex < sources.length; sourceIndex++) {
+    const source = sources[sourceIndex];
+    if (source.endFrame <= originFrame || source.startFrame >= throughFrame) continue;
     const start = Math.max(source.startFrame, source.baseFrame, originFrame);
-    const end = Math.min(throughFrame, source.confirmedHead, originFrame + frameSpan);
+    const end = Math.min(
+      throughFrame,
+      source.confirmedHead,
+      source.endFrame,
+      originFrame + frameSpan
+    );
     let sourceSentThroughFrame = Math.min(throughFrame, start);
 
     for (let frame = start; frame < end && entries.length < maxEntries; frame++) {
@@ -117,6 +152,9 @@ export const collectFrameBatch = <V>({
 
       entries.push({ sourceIndex, frame, frameOffset: frame - originFrame, value });
       sourceSentThroughFrame = frame + 1;
+    }
+    if (sourceSentThroughFrame >= source.endFrame) {
+      sourceSentThroughFrame = throughFrame;
     }
     sentThroughFrame = Math.min(sentThroughFrame, sourceSentThroughFrame);
   }
@@ -158,6 +196,24 @@ export interface ApplyFrameBatchOptions<K, V> {
   maxFrameLead: number;
 }
 
+/** Return the shared confirmed frontier while ignoring completed targets. */
+export const confirmedFrameFrontier = <V>(targets: Iterable<FrameTarget<V>>, floor = 0): number => {
+  assertNonNegativeSafeInteger('floor', floor);
+  let frontier = Number.POSITIVE_INFINITY;
+  let completedEnd = floor;
+  let found = false;
+  for (const target of targets) {
+    found = true;
+    if (target.endFrame <= floor || target.confirmedHead >= target.endFrame) {
+      if (target.endFrame !== Infinity) completedEnd = Math.max(completedEnd, target.endFrame);
+      continue;
+    }
+    frontier = Math.min(frontier, target.confirmedHead);
+  }
+  if (frontier !== Number.POSITIVE_INFINITY) return Math.max(floor, frontier);
+  return found ? Math.max(floor, completedEnd) : floor;
+};
+
 /**
  * Apply a decoded batch to keyed frame targets and advance the shared receive
  * frontier. The function is transport-neutral: consumers decode authentication,
@@ -175,9 +231,25 @@ export const applyFrameBatch = <K, V>({
   assertNonNegativeSafeInteger('maxFrameLead', maxFrameLead);
   for (const target of targets.values()) {
     assertNonNegativeSafeInteger('target.startFrame', target.startFrame);
+    assertNonNegativeSafeInteger('target.baseFrame', target.baseFrame);
     assertNonNegativeSafeInteger('target.confirmedHead', target.confirmedHead);
+    assertPositiveSafeInteger('target.capacity', target.capacity);
+    if (target.endFrame !== Infinity)
+      assertNonNegativeSafeInteger('target.endFrame', target.endFrame);
+    if (target.baseFrame < target.startFrame) {
+      throw new Error('target.baseFrame must be at or after startFrame');
+    }
     if (target.confirmedHead < target.startFrame) {
       throw new Error('target.confirmedHead must be at or after startFrame');
+    }
+    if (target.confirmedHead < target.baseFrame) {
+      throw new Error('target.confirmedHead must be at or after baseFrame');
+    }
+    if (target.endFrame < target.startFrame) {
+      throw new Error('target.endFrame must be at or after startFrame');
+    }
+    if (receivedThroughFrame < target.baseFrame && receivedThroughFrame < target.endFrame) {
+      throw new Error('target no longer retains receivedThroughFrame');
     }
   }
 
@@ -191,7 +263,6 @@ export const applyFrameBatch = <K, V>({
     Number.MAX_SAFE_INTEGER,
     receivedThroughFrame + maxFrameLead
   );
-  let committedFrame = false;
 
   for (const entry of entries) {
     if (!Number.isSafeInteger(entry.frameOffset) || entry.frameOffset < 0) {
@@ -211,33 +282,30 @@ export const applyFrameBatch = <K, V>({
       continue;
     }
 
-    if (localFrame < target.startFrame || localFrame < receivedThroughFrame) {
+    if (
+      localFrame < target.startFrame ||
+      localFrame < receivedThroughFrame ||
+      localFrame >= target.endFrame
+    ) {
       staleEntries.push(entry);
       continue;
     }
 
-    if (localFrame > maximumAcceptedFrame) {
+    const retainedMaximumFrame = target.baseFrame + target.capacity - 1;
+    if (localFrame > maximumAcceptedFrame || localFrame > retainedMaximumFrame) {
       futureEntries.push(entry);
       continue;
     }
 
     const result = target.commit(localFrame, entry.value);
     if (result.kind === 'new' || result.kind === 'duplicate' || result.kind === 'corrected') {
-      committedFrame = true;
       acceptedEntries.push({ entry, localFrame });
     } else {
       rejectedEntries.push(entry);
     }
   }
 
-  let nextReceivedThroughFrame = receivedThroughFrame;
-  if (committedFrame && targets.size > 0) {
-    let minimumConfirmedHead = Number.POSITIVE_INFINITY;
-    for (const target of targets.values()) {
-      minimumConfirmedHead = Math.min(minimumConfirmedHead, target.confirmedHead);
-    }
-    nextReceivedThroughFrame = Math.max(receivedThroughFrame, minimumConfirmedHead);
-  }
+  const nextReceivedThroughFrame = confirmedFrameFrontier(targets.values(), receivedThroughFrame);
 
   return {
     receivedThroughFrame: nextReceivedThroughFrame,

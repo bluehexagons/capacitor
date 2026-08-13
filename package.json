@@ -1,7 +1,7 @@
 {
   "name": "@bluehexagons/capacitor",
-  "version": "0.6.1",
-  "description": "Frame-indexed input synchronization and transport-neutral batching utilities",
+  "version": "0.7.0",
+  "description": "Transport-neutral frame synchronization and rollback primitives",
   "keywords": [
     "client-server",
     "fifo",
@@ -9,6 +9,7 @@
     "input-synchronization",
     "interpolation",
     "networking",
+    "rollback-netcode",
     "state-sync",
     "synchronization"
   ],
@@ -26,7 +27,8 @@
     "test": "test"
   },
   "files": [
-    "build/src"
+    "build/src",
+    "CHANGELOG.md"
   ],
   "type": "module",
   "main": "build/src/index.js",

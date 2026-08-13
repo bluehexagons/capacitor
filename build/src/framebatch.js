@@ -159,7 +159,7 @@ export const applyFrameBatch = ({ targets, entries, originFrame, receivedThrough
             acceptedEntries.push({ entry, localFrame });
         }
         else if (result.kind === 'conflict') {
-            conflictEntries.push({ entry, localFrame });
+            conflictEntries.push({ entry, localFrame, rollbackFrame: result.rollbackFrame });
         }
         else {
             rejectedEntries.push(entry);

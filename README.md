@@ -9,7 +9,7 @@ and simulation policy.
 ## Install
 
 ```bash
-npm install https://codeload.github.com/bluehexagons/capacitor/tar.gz/refs/tags/v0.7.1
+npm install https://codeload.github.com/bluehexagons/capacitor/tar.gz/refs/tags/v0.7.2
 ```
 
 The supported Node.js runtime is 24 or newer. Runtime modules use ordinary
@@ -92,7 +92,10 @@ const outgoing = collectFrameBatch({
   maxEntries: 255,
   maxFrameSpan: 255,
 });
-progress.markSent(outgoing.sentThroughFrame);
+const revision = progress.revision;
+queuePacket(outgoing, (error) => {
+  if (error === null) progress.markSent(outgoing.sentThroughFrame, revision);
+});
 
 const incoming = applyFrameBatch({
   targets: new Map([[playerID, remote]]),

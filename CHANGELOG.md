@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.7.1
+## 0.7.2
 
 - Preserve unsent frame and acknowledgment work until the transport confirms
   success, and ignore late transport callbacks after progress resets.
@@ -8,6 +8,8 @@
   rejections so consumers can fail closed.
 - Treat entries behind a target's retained window as stale while advancing from
   its confirmed frontier metadata.
+- Preserve conflict rollback frames in applied batch results for consumer
+  diagnostics or recovery policies.
 
 ## 0.7.0
 

@@ -285,7 +285,9 @@ describe('applyFrameBatch', () => {
       maxFrameLead: 8,
     });
 
-    expect(applied.conflictEntries).toEqual([{ entry: entry(1, 0, 2), localFrame: 0 }]);
+    expect(applied.conflictEntries).toEqual([
+      { entry: entry(1, 0, 2), localFrame: 0, rollbackFrame: 0 },
+    ]);
     expect(applied.acceptedEntries).toEqual([]);
     expect(applied.rejectedEntries).toEqual([]);
     expect(target.read(0)).toEqual({ player: 1, value: 1 });

@@ -41,6 +41,9 @@ export interface AcceptedFrameBatchEntry<K, V> {
     entry: FrameBatchEntry<K, V>;
     localFrame: number;
 }
+export interface ConflictFrameBatchEntry<K, V> extends AcceptedFrameBatchEntry<K, V> {
+    rollbackFrame: number;
+}
 export interface AppliedFrameBatch<K, V> {
     receivedThroughFrame: number;
     acceptedEntries: AcceptedFrameBatchEntry<K, V>[];
@@ -48,7 +51,7 @@ export interface AppliedFrameBatch<K, V> {
     staleEntries: FrameBatchEntry<K, V>[];
     futureEntries: FrameBatchEntry<K, V>[];
     invalidEntries: FrameBatchEntry<K, V>[];
-    conflictEntries: AcceptedFrameBatchEntry<K, V>[];
+    conflictEntries: ConflictFrameBatchEntry<K, V>[];
     rejectedEntries: FrameBatchEntry<K, V>[];
 }
 export interface ApplyFrameBatchOptions<K, V> {

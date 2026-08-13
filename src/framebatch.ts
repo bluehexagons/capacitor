@@ -174,6 +174,11 @@ export interface AcceptedFrameBatchEntry<K, V> {
   localFrame: number;
 }
 
+export interface ConflictFrameBatchEntry<K, V> extends AcceptedFrameBatchEntry<K, V> {
+  /** Earliest frame whose confirmed value must be reconsidered by the consumer. */
+  rollbackFrame: number;
+}
+
 export interface AppliedFrameBatch<K, V> {
   /** Updated contiguous receive frontier across every target. */
   receivedThroughFrame: number;
@@ -183,7 +188,7 @@ export interface AppliedFrameBatch<K, V> {
   futureEntries: FrameBatchEntry<K, V>[];
   invalidEntries: FrameBatchEntry<K, V>[];
   /** Confirmed values that disagreed with immutable input already stored at the target. */
-  conflictEntries: AcceptedFrameBatchEntry<K, V>[];
+  conflictEntries: ConflictFrameBatchEntry<K, V>[];
   rejectedEntries: FrameBatchEntry<K, V>[];
 }
 
@@ -257,7 +262,7 @@ export const applyFrameBatch = <K, V>({
   const staleEntries: FrameBatchEntry<K, V>[] = [];
   const futureEntries: FrameBatchEntry<K, V>[] = [];
   const invalidEntries: FrameBatchEntry<K, V>[] = [];
-  const conflictEntries: AcceptedFrameBatchEntry<K, V>[] = [];
+  const conflictEntries: ConflictFrameBatchEntry<K, V>[] = [];
   const rejectedEntries: FrameBatchEntry<K, V>[] = [];
   const maximumAcceptedFrame = Math.min(
     Number.MAX_SAFE_INTEGER,
@@ -302,7 +307,7 @@ export const applyFrameBatch = <K, V>({
     if (result.kind === 'new' || result.kind === 'duplicate' || result.kind === 'corrected') {
       acceptedEntries.push({ entry, localFrame });
     } else if (result.kind === 'conflict') {
-      conflictEntries.push({ entry, localFrame });
+      conflictEntries.push({ entry, localFrame, rollbackFrame: result.rollbackFrame });
     } else {
       rejectedEntries.push(entry);
     }

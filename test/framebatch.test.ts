@@ -271,6 +271,26 @@ describe('applyFrameBatch', () => {
     expect(target.consumeDirty()).toBe(1);
   });
 
+  test('classifies immutable confirmed-input conflicts separately', () => {
+    const target = new Client<Input>({
+      comparator: (left, right) => left.player === right.player && left.value === right.value,
+    });
+    target.commit(0, { player: 1, value: 1 });
+
+    const applied = applyFrameBatch({
+      targets: new Map([[1, target]]),
+      entries: [entry(1, 0, 2)],
+      originFrame: 0,
+      receivedThroughFrame: 0,
+      maxFrameLead: 8,
+    });
+
+    expect(applied.conflictEntries).toEqual([{ entry: entry(1, 0, 2), localFrame: 0 }]);
+    expect(applied.acceptedEntries).toEqual([]);
+    expect(applied.rejectedEntries).toEqual([]);
+    expect(target.read(0)).toEqual({ player: 1, value: 1 });
+  });
+
   test('does not advance across a gap in any target', () => {
     let confirmedHead = 10;
     const target: FrameTarget<Input> = {
@@ -298,6 +318,35 @@ describe('applyFrameBatch', () => {
     expect(applied.receivedThroughFrame).toBe(11);
     expect(applied.acceptedEntries).toHaveLength(1);
     expect(applied.rejectedEntries).toEqual([entry(1, 1, 11), entry(1, 0, 10)]);
+  });
+
+  test('advances across an evicted confirmed prefix and classifies it as stale', () => {
+    let confirmedHead = 25;
+    const target: FrameTarget<Input> = {
+      baseFrame: 20,
+      capacity: 16,
+      endFrame: Infinity,
+      startFrame: 10,
+      get confirmedHead() {
+        return confirmedHead;
+      },
+      commit: (frame) => {
+        if (frame !== confirmedHead) return { kind: 'stale' };
+        confirmedHead++;
+        return { kind: 'new' };
+      },
+    };
+    const applied = applyFrameBatch({
+      targets: new Map([[1, target]]),
+      entries: [entry(1, 5, 15), entry(1, 15, 25)],
+      originFrame: 10,
+      receivedThroughFrame: 10,
+      maxFrameLead: 20,
+    });
+
+    expect(applied.staleEntries).toEqual([entry(1, 5, 15)]);
+    expect(applied.acceptedEntries).toEqual([{ entry: entry(1, 15, 25), localFrame: 25 }]);
+    expect(applied.receivedThroughFrame).toBe(26);
   });
 
   test('rejects input that would evict unresolved retained history', () => {

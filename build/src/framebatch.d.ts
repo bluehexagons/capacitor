@@ -48,6 +48,7 @@ export interface AppliedFrameBatch<K, V> {
     staleEntries: FrameBatchEntry<K, V>[];
     futureEntries: FrameBatchEntry<K, V>[];
     invalidEntries: FrameBatchEntry<K, V>[];
+    conflictEntries: AcceptedFrameBatchEntry<K, V>[];
     rejectedEntries: FrameBatchEntry<K, V>[];
 }
 export interface ApplyFrameBatchOptions<K, V> {

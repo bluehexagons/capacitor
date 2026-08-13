@@ -182,6 +182,8 @@ export interface AppliedFrameBatch<K, V> {
   staleEntries: FrameBatchEntry<K, V>[];
   futureEntries: FrameBatchEntry<K, V>[];
   invalidEntries: FrameBatchEntry<K, V>[];
+  /** Confirmed values that disagreed with immutable input already stored at the target. */
+  conflictEntries: AcceptedFrameBatchEntry<K, V>[];
   rejectedEntries: FrameBatchEntry<K, V>[];
 }
 
@@ -248,9 +250,6 @@ export const applyFrameBatch = <K, V>({
     if (target.endFrame < target.startFrame) {
       throw new Error('target.endFrame must be at or after startFrame');
     }
-    if (receivedThroughFrame < target.baseFrame && receivedThroughFrame < target.endFrame) {
-      throw new Error('target no longer retains receivedThroughFrame');
-    }
   }
 
   const acceptedEntries: AcceptedFrameBatchEntry<K, V>[] = [];
@@ -258,6 +257,7 @@ export const applyFrameBatch = <K, V>({
   const staleEntries: FrameBatchEntry<K, V>[] = [];
   const futureEntries: FrameBatchEntry<K, V>[] = [];
   const invalidEntries: FrameBatchEntry<K, V>[] = [];
+  const conflictEntries: AcceptedFrameBatchEntry<K, V>[] = [];
   const rejectedEntries: FrameBatchEntry<K, V>[] = [];
   const maximumAcceptedFrame = Math.min(
     Number.MAX_SAFE_INTEGER,
@@ -284,6 +284,7 @@ export const applyFrameBatch = <K, V>({
 
     if (
       localFrame < target.startFrame ||
+      localFrame < target.baseFrame ||
       localFrame < receivedThroughFrame ||
       localFrame >= target.endFrame
     ) {
@@ -300,6 +301,8 @@ export const applyFrameBatch = <K, V>({
     const result = target.commit(localFrame, entry.value);
     if (result.kind === 'new' || result.kind === 'duplicate' || result.kind === 'corrected') {
       acceptedEntries.push({ entry, localFrame });
+    } else if (result.kind === 'conflict') {
+      conflictEntries.push({ entry, localFrame });
     } else {
       rejectedEntries.push(entry);
     }
@@ -314,6 +317,7 @@ export const applyFrameBatch = <K, V>({
     staleEntries,
     futureEntries,
     invalidEntries,
+    conflictEntries,
     rejectedEntries,
   };
 };

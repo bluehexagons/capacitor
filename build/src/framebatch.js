@@ -118,15 +118,13 @@ export const applyFrameBatch = ({ targets, entries, originFrame, receivedThrough
         if (target.endFrame < target.startFrame) {
             throw new Error('target.endFrame must be at or after startFrame');
         }
-        if (receivedThroughFrame < target.baseFrame && receivedThroughFrame < target.endFrame) {
-            throw new Error('target no longer retains receivedThroughFrame');
-        }
     }
     const acceptedEntries = [];
     const unknownTargetEntries = [];
     const staleEntries = [];
     const futureEntries = [];
     const invalidEntries = [];
+    const conflictEntries = [];
     const rejectedEntries = [];
     const maximumAcceptedFrame = Math.min(Number.MAX_SAFE_INTEGER, receivedThroughFrame + maxFrameLead);
     for (const entry of entries) {
@@ -145,6 +143,7 @@ export const applyFrameBatch = ({ targets, entries, originFrame, receivedThrough
             continue;
         }
         if (localFrame < target.startFrame ||
+            localFrame < target.baseFrame ||
             localFrame < receivedThroughFrame ||
             localFrame >= target.endFrame) {
             staleEntries.push(entry);
@@ -159,6 +158,9 @@ export const applyFrameBatch = ({ targets, entries, originFrame, receivedThrough
         if (result.kind === 'new' || result.kind === 'duplicate' || result.kind === 'corrected') {
             acceptedEntries.push({ entry, localFrame });
         }
+        else if (result.kind === 'conflict') {
+            conflictEntries.push({ entry, localFrame });
+        }
         else {
             rejectedEntries.push(entry);
         }
@@ -171,6 +173,7 @@ export const applyFrameBatch = ({ targets, entries, originFrame, receivedThrough
         staleEntries,
         futureEntries,
         invalidEntries,
+        conflictEntries,
         rejectedEntries,
     };
 };

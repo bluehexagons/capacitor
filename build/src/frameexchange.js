@@ -4,6 +4,7 @@ const assertFrame = (name, frame) => {
     }
 };
 export class FrameExchangeProgress {
+    progressRevision = 0;
     originFrame;
     sentThroughFrame;
     acknowledgedThroughFrame;
@@ -19,6 +20,7 @@ export class FrameExchangeProgress {
     }
     reset(frame = this.originFrame) {
         assertFrame('frame', frame);
+        this.progressRevision += 1;
         this.sentThroughFrame = frame;
         this.acknowledgedThroughFrame = frame;
         this.receivedThroughFrame = frame;
@@ -41,16 +43,28 @@ export class FrameExchangeProgress {
     needsAcknowledgement() {
         return this.receivedThroughFrame > this.lastAcknowledgedThroughFrame;
     }
-    markSent(throughFrame) {
+    get revision() {
+        return this.progressRevision;
+    }
+    markSent(throughFrame, revision = this.progressRevision) {
         assertFrame('throughFrame', throughFrame);
+        assertFrame('revision', revision);
+        if (revision !== this.progressRevision)
+            return false;
         this.sentThroughFrame = Math.max(this.sentThroughFrame, throughFrame);
+        return true;
     }
     markReceived(throughFrame) {
         assertFrame('throughFrame', throughFrame);
         this.receivedThroughFrame = Math.max(this.receivedThroughFrame, throughFrame);
     }
-    markAcknowledgementSent() {
-        this.lastAcknowledgedThroughFrame = this.receivedThroughFrame;
+    markAcknowledgementSent(throughFrame = this.receivedThroughFrame, revision = this.progressRevision) {
+        assertFrame('throughFrame', throughFrame);
+        assertFrame('revision', revision);
+        if (revision !== this.progressRevision || throughFrame > this.receivedThroughFrame)
+            return false;
+        this.lastAcknowledgedThroughFrame = Math.max(this.lastAcknowledgedThroughFrame, throughFrame);
+        return true;
     }
     acceptAcknowledgement(throughFrame, maximumThroughFrame) {
         assertFrame('throughFrame', throughFrame);

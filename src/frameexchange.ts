@@ -8,6 +8,7 @@ export type AcknowledgementResult = 'advanced' | 'duplicate' | 'impossible';
 
 /** Transport-neutral progress cursors for one remote frame stream. */
 export class FrameExchangeProgress {
+  private progressRevision = 0;
   originFrame: number;
   sentThroughFrame: number;
   acknowledgedThroughFrame: number;
@@ -25,6 +26,7 @@ export class FrameExchangeProgress {
 
   reset(frame = this.originFrame): this {
     assertFrame('frame', frame);
+    this.progressRevision += 1;
     this.sentThroughFrame = frame;
     this.acknowledgedThroughFrame = frame;
     this.receivedThroughFrame = frame;
@@ -52,9 +54,17 @@ export class FrameExchangeProgress {
     return this.receivedThroughFrame > this.lastAcknowledgedThroughFrame;
   }
 
-  markSent(throughFrame: number): void {
+  /** Changes whenever queued transport work should be considered stale. */
+  get revision(): number {
+    return this.progressRevision;
+  }
+
+  markSent(throughFrame: number, revision = this.progressRevision): boolean {
     assertFrame('throughFrame', throughFrame);
+    assertFrame('revision', revision);
+    if (revision !== this.progressRevision) return false;
     this.sentThroughFrame = Math.max(this.sentThroughFrame, throughFrame);
+    return true;
   }
 
   markReceived(throughFrame: number): void {
@@ -62,8 +72,16 @@ export class FrameExchangeProgress {
     this.receivedThroughFrame = Math.max(this.receivedThroughFrame, throughFrame);
   }
 
-  markAcknowledgementSent(): void {
-    this.lastAcknowledgedThroughFrame = this.receivedThroughFrame;
+  markAcknowledgementSent(
+    throughFrame = this.receivedThroughFrame,
+    revision = this.progressRevision
+  ): boolean {
+    assertFrame('throughFrame', throughFrame);
+    assertFrame('revision', revision);
+    if (revision !== this.progressRevision || throughFrame > this.receivedThroughFrame)
+      return false;
+    this.lastAcknowledgedThroughFrame = Math.max(this.lastAcknowledgedThroughFrame, throughFrame);
+    return true;
   }
 
   acceptAcknowledgement(throughFrame: number, maximumThroughFrame: number): AcknowledgementResult {

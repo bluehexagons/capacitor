@@ -9,7 +9,7 @@ and simulation policy.
 ## Install
 
 ```bash
-npm install https://codeload.github.com/bluehexagons/capacitor/tar.gz/refs/tags/v0.7.0
+npm install https://codeload.github.com/bluehexagons/capacitor/tar.gz/refs/tags/v0.7.1
 ```
 
 The supported Node.js runtime is 24 or newer. Runtime modules use ordinary
@@ -109,7 +109,9 @@ Batching invariants:
 - `maxEntries` must cover every source participating in the requested span.
 - A target rejects input that would evict unresolved retained history.
 - Remove or deactivate participants at their exclusive `endFrame`.
-- Treat `conflict` as a protocol error unless legacy replacement was explicitly enabled.
+- Treat `conflictEntries` as protocol errors unless legacy replacement was explicitly enabled.
+- Capture `revision` when queueing transport work and advance sent or acknowledged
+  cursors only from that work's successful completion callback.
 - Encode authentication, checksums, epochs, and payloads outside this package.
 
 ## Development

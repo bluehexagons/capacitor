@@ -1,6 +1,6 @@
 {
   "name": "@bluehexagons/capacitor",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "Transport-neutral frame synchronization and rollback primitives",
   "keywords": [
     "client-server",

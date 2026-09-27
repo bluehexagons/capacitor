@@ -21,7 +21,7 @@
     "inlineSources": true,
     "strict": true,
     "target": "ES2022",
-    "types": ["node", "jest"]
+    "types": ["node"]
   },
   "include": ["src/**/*.ts", "test/**/*.ts"]
 }

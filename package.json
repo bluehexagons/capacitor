@@ -40,7 +40,7 @@
     }
   },
   "scripts": {
-    "test": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js build/test",
+    "test": "node --test \"build/test/*.test.js\"",
     "lint": "oxlint .",
     "format": "oxfmt --write .",
     "format:check": "oxfmt --check .",
@@ -55,9 +55,7 @@
     "prepublishOnly": "npm run compile"
   },
   "devDependencies": {
-    "@types/jest": "^30.0.0",
     "@types/node": "^26.6.3",
-    "jest": "^30.5.2",
     "oxfmt": "^0.70.0",
     "oxlint": "^1.85.0",
     "typescript": "^7.0.2"

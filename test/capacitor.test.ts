@@ -1,3 +1,6 @@
+import assert from 'node:assert/strict';
+import { describe, test } from 'node:test';
+
 import { Capacitor, Client } from '../src/capacitor.js';
 
 interface Packet {
@@ -10,163 +13,196 @@ describe('Client', () => {
   test('first commit reports new, idempotent retransmit reports duplicate', () => {
     const cap = new Capacitor<Packet>(compare);
     const client = cap.connect({});
-    expect(client.read(0)).toBe(null);
-    expect(client.size).toBe(0);
+    assert.strictEqual(client.read(0), null);
+    assert.strictEqual(client.size, 0);
 
-    expect(client.commit(0, { value: 0 }).kind).toBe('new');
-    expect(client.read(0)?.value).toBe(0);
+    assert.strictEqual(client.commit(0, { value: 0 }).kind, 'new');
+    assert.strictEqual(client.read(0)?.value, 0);
 
     // Confirmed input is immutable by default.
     const corrected = client.commit(0, { value: 1 });
-    expect(corrected.kind).toBe('conflict');
-    if (corrected.kind === 'conflict') expect(corrected.rollbackFrame).toBe(0);
-    expect(client.read(0)?.value).toBe(0);
+    assert.strictEqual(corrected.kind, 'conflict');
+    if (corrected.kind === 'conflict') assert.strictEqual(corrected.rollbackFrame, 0);
+    assert.strictEqual(client.read(0)?.value, 0);
 
-    expect(client.commit(0, { value: 0 }).kind).toBe('duplicate');
+    assert.strictEqual(client.commit(0, { value: 0 }).kind, 'duplicate');
   });
 
   test('confirmed conflicts can opt into legacy replacement behavior', () => {
     const client = new Client<Packet>({ comparator: compare, confirmedConflict: 'replace' });
     client.commit(0, { value: 0 });
-    expect(client.commit(0, { value: 1 }).kind).toBe('corrected');
-    expect(client.read(0)?.value).toBe(1);
-    expect(client.consumeDirty()).toBe(0);
+    assert.strictEqual(client.commit(0, { value: 1 }).kind, 'corrected');
+    assert.strictEqual(client.read(0)?.value, 1);
+    assert.strictEqual(client.consumeDirty(), 0);
   });
 
   test('non-contiguous commits do not advance confirmedHead', () => {
     const cap = new Capacitor<Packet>(compare);
     const client = cap.connect({});
-    expect(client.commit(0, { value: 0 }).kind).toBe('new');
-    expect(client.commit(1, { value: 0 }).kind).toBe('new');
-    expect(client.size).toBe(2);
+    assert.strictEqual(client.commit(0, { value: 0 }).kind, 'new');
+    assert.strictEqual(client.commit(1, { value: 0 }).kind, 'new');
+    assert.strictEqual(client.size, 2);
 
     // Skip frame 2; head should not move past 2.
-    expect(client.commit(4, { value: 4 }).kind).toBe('new');
-    expect(client.read(2)).toBe(null);
-    expect(client.size).toBe(2);
+    assert.strictEqual(client.commit(4, { value: 4 }).kind, 'new');
+    assert.strictEqual(client.read(2), null);
+    assert.strictEqual(client.size, 2);
 
     // Filling the gap brings head all the way up.
-    expect(client.commit(3, { value: 3 }).kind).toBe('new');
-    expect(client.commit(2, { value: 2 }).kind).toBe('new');
-    expect(client.size).toBe(5);
-    expect(client.read(2)?.value).toBe(2);
-    expect(client.read(4)?.value).toBe(4);
+    assert.strictEqual(client.commit(3, { value: 3 }).kind, 'new');
+    assert.strictEqual(client.commit(2, { value: 2 }).kind, 'new');
+    assert.strictEqual(client.size, 5);
+    assert.strictEqual(client.read(2)?.value, 2);
+    assert.strictEqual(client.read(4)?.value, 4);
   });
 
   test('startFrame rejects earlier commits as stale', () => {
     const cap = new Capacitor<Packet>(compare);
     const client = cap.connect({ startFrame: 5 });
-    expect(client.startFrame).toBe(5);
-    expect(client.sizeOffset).toBe(5);
+    assert.strictEqual(client.startFrame, 5);
+    assert.strictEqual(client.sizeOffset, 5);
 
-    expect(client.commit(4, { value: 4 }).kind).toBe('stale');
-    expect(client.size).toBe(0);
-    expect(client.read(4)).toBe(null);
+    assert.strictEqual(client.commit(4, { value: 4 }).kind, 'stale');
+    assert.strictEqual(client.size, 0);
+    assert.strictEqual(client.read(4), null);
 
-    expect(client.commit(5, { value: 5 }).kind).toBe('new');
-    expect(client.read(5)?.value).toBe(5);
+    assert.strictEqual(client.commit(5, { value: 5 }).kind, 'new');
+    assert.strictEqual(client.read(5)?.value, 5);
 
-    expect(client.commit(6, { value: 6 }).kind).toBe('new');
-    expect(client.read(6)?.value).toBe(6);
-    expect(client.size).toBe(2);
+    assert.strictEqual(client.commit(6, { value: 6 }).kind, 'new');
+    assert.strictEqual(client.read(6)?.value, 6);
+    assert.strictEqual(client.size, 2);
   });
 
   test('predict then matching confirm reports duplicate, mismatching confirm reports corrected', () => {
     const cap = new Capacitor<Packet>(compare);
     const client = cap.connect({});
-    expect(client.predict(0, { value: 9 }).kind).toBe('new');
-    expect(client.frameStatus(0)).toBe('predicted');
+    assert.strictEqual(client.predict(0, { value: 9 }).kind, 'new');
+    assert.strictEqual(client.frameStatus(0), 'predicted');
 
     // Match: prediction confirmed without rollback.
-    expect(client.commit(0, { value: 9 }).kind).toBe('duplicate');
-    expect(client.frameStatus(0)).toBe('confirmed');
-    expect(client.consumeDirty()).toBe(null);
+    assert.strictEqual(client.commit(0, { value: 9 }).kind, 'duplicate');
+    assert.strictEqual(client.frameStatus(0), 'confirmed');
+    assert.strictEqual(client.consumeDirty(), null);
 
     // Mismatch: prediction was wrong; rollback frame surfaces.
-    expect(client.predict(1, { value: 1 }).kind).toBe('new');
+    assert.strictEqual(client.predict(1, { value: 1 }).kind, 'new');
     const result = client.commit(1, { value: 2 });
-    expect(result.kind).toBe('corrected');
-    if (result.kind === 'corrected') expect(result.rollbackFrame).toBe(1);
-    expect(client.consumeDirty()).toBe(1);
-    expect(client.consumeDirty()).toBe(null);
+    assert.strictEqual(result.kind, 'corrected');
+    if (result.kind === 'corrected') assert.strictEqual(result.rollbackFrame, 1);
+    assert.strictEqual(client.consumeDirty(), 1);
+    assert.strictEqual(client.consumeDirty(), null);
   });
 
   test('predict cannot downgrade or create rollback against confirmed input', () => {
     const cap = new Capacitor<Packet>(compare);
     const client = cap.connect({});
-    expect(client.commit(0, { value: 5 }).kind).toBe('new');
-    expect(client.predict(0, { value: 5 }).kind).toBe('duplicate');
-    expect(client.predict(0, { value: 9 }).kind).toBe('duplicate');
-    expect(client.frameStatus(0)).toBe('confirmed');
-    expect(client.read(0)?.value).toBe(5);
-    expect(client.consumeDirty()).toBe(null);
+    assert.strictEqual(client.commit(0, { value: 5 }).kind, 'new');
+    assert.strictEqual(client.predict(0, { value: 5 }).kind, 'duplicate');
+    assert.strictEqual(client.predict(0, { value: 9 }).kind, 'duplicate');
+    assert.strictEqual(client.frameStatus(0), 'confirmed');
+    assert.strictEqual(client.read(0)?.value, 5);
+    assert.strictEqual(client.consumeDirty(), null);
   });
 
   test('history bound trims oldest entries on overflow', () => {
     const cap = new Capacitor<Packet>(compare);
     const client = cap.connect({ historyFrames: 4 });
     for (let i = 0; i < 6; i++) {
-      expect(client.commit(i, { value: i }).kind).toBe('new');
+      assert.strictEqual(client.commit(i, { value: i }).kind, 'new');
     }
-    expect(client.read(0)).toBe(null); // trimmed
-    expect(client.read(1)).toBe(null); // trimmed
-    expect(client.read(2)?.value).toBe(2);
-    expect(client.read(5)?.value).toBe(5);
+    assert.strictEqual(client.read(0), null); // trimmed
+    assert.strictEqual(client.read(1), null); // trimmed
+    assert.strictEqual(client.read(2)?.value, 2);
+    assert.strictEqual(client.read(5)?.value, 5);
 
     // A re-commit landing in the trimmed region is rejected.
-    expect(client.commit(0, { value: 0 }).kind).toBe('outside-window');
+    assert.strictEqual(client.commit(0, { value: 0 }).kind, 'outside-window');
   });
 
   test('sparse writes beyond the window remain readable without aliasing the confirmed head', () => {
     const cap = new Capacitor<Packet>(compare);
     const client = cap.connect({ historyFrames: 4 });
 
-    expect(client.commit(100, { value: 100 }).kind).toBe('new');
-    expect(client.baseFrame).toBe(97);
-    expect(client.confirmedHead).toBe(97);
-    expect(client.read(100)?.value).toBe(100);
+    assert.strictEqual(client.commit(100, { value: 100 }).kind, 'new');
+    assert.strictEqual(client.baseFrame, 97);
+    assert.strictEqual(client.confirmedHead, 97);
+    assert.strictEqual(client.read(100)?.value, 100);
 
-    expect(client.commit(101, { value: 101 }).kind).toBe('new');
-    expect(client.baseFrame).toBe(98);
-    expect(client.read(100)?.value).toBe(100);
-    expect(client.read(101)?.value).toBe(101);
+    assert.strictEqual(client.commit(101, { value: 101 }).kind, 'new');
+    assert.strictEqual(client.baseFrame, 98);
+    assert.strictEqual(client.read(100)?.value, 100);
+    assert.strictEqual(client.read(101)?.value, 101);
 
     // Filling the retained gap advances through both sparse commits.
     client.commit(98, { value: 98 });
     client.commit(99, { value: 99 });
-    expect(client.confirmedHead).toBe(102);
+    assert.strictEqual(client.confirmedHead, 102);
   });
 
   test('constructor and mutating APIs reject non-integral frame coordinates', () => {
-    expect(() => new Client({ historyFrames: 1.5 })).toThrow(
-      'historyFrames must be a positive safe integer within the maximum array length'
+    assert.throws(
+      () => new Client({ historyFrames: 1.5 }),
+      (error) =>
+        error instanceof Error &&
+        error.message.includes(
+          'historyFrames must be a positive safe integer within the maximum array length'
+        )
     );
-    expect(() => new Client({ startFrame: -1 })).toThrow(
-      'frame must be a non-negative safe integer'
+    assert.throws(
+      () => new Client({ startFrame: -1 }),
+      (error) =>
+        error instanceof Error &&
+        error.message.includes('frame must be a non-negative safe integer')
     );
-    expect(() => new Client({ startFrame: Number.NaN })).toThrow(
-      'frame must be a non-negative safe integer'
+    assert.throws(
+      () => new Client({ startFrame: Number.NaN }),
+      (error) =>
+        error instanceof Error &&
+        error.message.includes('frame must be a non-negative safe integer')
     );
-    expect(() => new Client({ startFrame: 1, sizeOffset: 2 })).toThrow(
-      'startFrame and sizeOffset must match when both are provided'
+    assert.throws(
+      () => new Client({ startFrame: 1, sizeOffset: 2 }),
+      (error) =>
+        error instanceof Error &&
+        error.message.includes('startFrame and sizeOffset must match when both are provided')
     );
 
     const client = new Client<Packet>({ comparator: compare });
-    expect(() => client.commit(Number.NaN, { value: 0 })).toThrow('frame must be a safe integer');
-    expect(() => client.predict(1.5, { value: 0 })).toThrow('frame must be a safe integer');
-    expect(() => client.deactivate(Infinity)).toThrow('frame must be a non-negative safe integer');
+    assert.throws(
+      () => client.commit(Number.NaN, { value: 0 }),
+      (error) => error instanceof Error && error.message.includes('frame must be a safe integer')
+    );
+    assert.throws(
+      () => client.predict(1.5, { value: 0 }),
+      (error) => error instanceof Error && error.message.includes('frame must be a safe integer')
+    );
+    assert.throws(
+      () => client.deactivate(Infinity),
+      (error) =>
+        error instanceof Error &&
+        error.message.includes('frame must be a non-negative safe integer')
+    );
 
     const cap = new Capacitor<Packet>(compare);
-    expect(() => cap.readConfirmed(Number.NaN)).toThrow('frame must be a safe integer');
-    expect(() => cap.resync(-1)).toThrow('frame must be a non-negative safe integer');
+    assert.throws(
+      () => cap.readConfirmed(Number.NaN),
+      (error) => error instanceof Error && error.message.includes('frame must be a safe integer')
+    );
+    assert.throws(
+      () => cap.resync(-1),
+      (error) =>
+        error instanceof Error &&
+        error.message.includes('frame must be a non-negative safe integer')
+    );
   });
 
   test('direct Client construction uses identity comparison by default', () => {
     const client = new Client<number>({});
 
     client.commit(0, 1);
-    expect(client.commit(0, 1).kind).toBe('duplicate');
-    expect(client.commit(0, 2).kind).toBe('conflict');
+    assert.strictEqual(client.commit(0, 1).kind, 'duplicate');
+    assert.strictEqual(client.commit(0, 2).kind, 'conflict');
   });
 
   test('Capacitor.connect always uses the shared comparator', () => {
@@ -177,7 +213,7 @@ describe('Client', () => {
     const client = cap.connect(props);
 
     client.commit(0, { value: 1 });
-    expect(client.commit(0, { value: 2 }).kind).toBe('conflict');
+    assert.strictEqual(client.commit(0, { value: 2 }).kind, 'conflict');
   });
 
   test('trimBefore advances baseFrame and clears slots', () => {
@@ -185,8 +221,8 @@ describe('Client', () => {
     const client = cap.connect({});
     for (let i = 0; i < 5; i++) client.commit(i, { value: i });
     client.trimBefore(3);
-    expect(client.read(2)).toBe(null);
-    expect(client.read(3)?.value).toBe(3);
+    assert.strictEqual(client.read(2), null);
+    assert.strictEqual(client.read(3)?.value, 3);
   });
 
   test('window advancement recovers a confirmed head at the new base', () => {
@@ -196,8 +232,8 @@ describe('Client', () => {
     client.predict(4, { value: 4 });
     client.predict(5, { value: 5 });
 
-    expect(client.baseFrame).toBe(2);
-    expect(client.confirmedHead).toBe(3);
+    assert.strictEqual(client.baseFrame, 2);
+    assert.strictEqual(client.confirmedHead, 3);
   });
 
   test('deactivate stops accepting commits at endFrame', () => {
@@ -205,12 +241,12 @@ describe('Client', () => {
     const client = cap.connect({});
     client.commit(0, { value: 0 });
     client.deactivate(2);
-    expect(client.commit(2, { value: 2 }).kind).toBe('inactive');
-    expect(client.commit(1, { value: 1 }).kind).toBe('new');
+    assert.strictEqual(client.commit(2, { value: 2 }).kind, 'inactive');
+    assert.strictEqual(client.commit(1, { value: 1 }).kind, 'new');
 
     // Repeated calls can shorten participation but cannot reactivate it.
     client.deactivate(5);
-    expect(client.endFrame).toBe(2);
+    assert.strictEqual(client.endFrame, 2);
   });
 
   test('ensurePredicted fills empty slots with the predictor strategy', () => {
@@ -220,10 +256,10 @@ describe('Client', () => {
     });
     client.commit(0, { value: 7 });
     client.ensurePredicted(4);
-    expect(client.frameStatus(1)).toBe('predicted');
-    expect(client.frameStatus(4)).toBe('predicted');
-    expect(client.read(4)?.value).toBe(7);
-    expect(client.confirmedHead).toBe(1); // predictions don't advance confirmedHead
+    assert.strictEqual(client.frameStatus(1), 'predicted');
+    assert.strictEqual(client.frameStatus(4), 'predicted');
+    assert.strictEqual(client.read(4)?.value, 7);
+    assert.strictEqual(client.confirmedHead, 1); // predictions don't advance confirmedHead
   });
 
   test('ensurePredicted extends beyond one ring capacity without slot aliasing', () => {
@@ -235,11 +271,11 @@ describe('Client', () => {
 
     client.ensurePredicted(10);
 
-    expect(client.baseFrame).toBe(7);
-    expect(client.read(6)).toBe(null);
-    expect(client.read(7)?.value).toBe(7);
-    expect(client.read(10)?.value).toBe(10);
-    expect(client.frameStatus(10)).toBe('predicted');
+    assert.strictEqual(client.baseFrame, 7);
+    assert.strictEqual(client.read(6), null);
+    assert.strictEqual(client.read(7)?.value, 7);
+    assert.strictEqual(client.read(10)?.value, 10);
+    assert.strictEqual(client.frameStatus(10), 'predicted');
   });
 
   test('ensurePredicted is a no-op when no predictor is configured', () => {
@@ -247,13 +283,13 @@ describe('Client', () => {
     const noPredictor = cap.connect({});
     noPredictor.commit(0, { value: 1 });
     noPredictor.ensurePredicted(5);
-    expect(noPredictor.frameStatus(1)).toBe('empty');
+    assert.strictEqual(noPredictor.frameStatus(1), 'empty');
 
     // A predictor that propagates null prev (passthrough) effectively
     // refuses cold-start fills — slots without an anchor stay empty.
     const passThrough = cap.connect({ predictor: (prev) => prev });
     passThrough.ensurePredicted(5);
-    expect(passThrough.frameStatus(0)).toBe('empty');
+    assert.strictEqual(passThrough.frameStatus(0), 'empty');
   });
 
   test('matching commit upgrades a prediction without rollback', () => {
@@ -261,17 +297,17 @@ describe('Client', () => {
     const client = cap.connect({ predictor: (prev) => prev });
     client.commit(0, { value: 3 });
     client.ensurePredicted(2);
-    expect(client.frameStatus(1)).toBe('predicted');
+    assert.strictEqual(client.frameStatus(1), 'predicted');
 
-    expect(client.commit(1, { value: 3 }).kind).toBe('duplicate');
-    expect(client.frameStatus(1)).toBe('confirmed');
-    expect(client.confirmedHead).toBe(2);
-    expect(client.consumeDirty()).toBe(null);
+    assert.strictEqual(client.commit(1, { value: 3 }).kind, 'duplicate');
+    assert.strictEqual(client.frameStatus(1), 'confirmed');
+    assert.strictEqual(client.confirmedHead, 2);
+    assert.strictEqual(client.consumeDirty(), null);
 
     // Frame 2 prediction disagrees with the wire input → correction.
     const result = client.commit(2, { value: 99 });
-    expect(result.kind).toBe('corrected');
-    expect(client.consumeDirty()).toBe(2);
+    assert.strictEqual(result.kind, 'corrected');
+    assert.strictEqual(client.consumeDirty(), 2);
   });
 
   test('ensurePredicted leaves already-written slots alone', () => {
@@ -283,12 +319,12 @@ describe('Client', () => {
     // Land a confirmed value mid-stream as well.
     client.commit(3, { value: 42 });
     client.ensurePredicted(5);
-    expect(client.read(3)?.value).toBe(42); // confirmed value preserved
-    expect(client.read(1)?.value).toBe(1);
-    expect(client.read(2)?.value).toBe(2);
+    assert.strictEqual(client.read(3)?.value, 42); // confirmed value preserved
+    assert.strictEqual(client.read(1)?.value, 1);
+    assert.strictEqual(client.read(2)?.value, 2);
     // After the confirmed gap, predictions resume from the confirmed value.
-    expect(client.read(4)?.value).toBe(43);
-    expect(client.read(5)?.value).toBe(44);
+    assert.strictEqual(client.read(4)?.value, 43);
+    assert.strictEqual(client.read(5)?.value, 44);
   });
 
   test('invalidatePredictedFrom drops predictions and lets ensurePredicted recompute', () => {
@@ -299,20 +335,20 @@ describe('Client', () => {
     client.commit(0, { value: 0 });
     client.ensurePredicted(5);
     // Predictions: 1..5 derived from anchor 0.
-    expect(client.read(5)?.value).toBe(5);
+    assert.strictEqual(client.read(5)?.value, 5);
     // A late-arriving confirmed correction at frame 2 invalidates 3..5.
     const result = client.commit(2, { value: 100 });
-    expect(result.kind).toBe('corrected');
+    assert.strictEqual(result.kind, 'corrected');
     const cleared = client.invalidatePredictedFrom(3);
-    expect(cleared).toBe(3);
-    expect(client.frameStatus(3)).toBe('empty');
-    expect(client.frameStatus(5)).toBe('empty');
+    assert.strictEqual(cleared, 3);
+    assert.strictEqual(client.frameStatus(3), 'empty');
+    assert.strictEqual(client.frameStatus(5), 'empty');
     // Confirmed slots are preserved.
-    expect(client.read(2)?.value).toBe(100);
+    assert.strictEqual(client.read(2)?.value, 100);
     // Re-running ensurePredicted now anchors on the corrected value.
     client.ensurePredicted(5);
-    expect(client.read(3)?.value).toBe(101);
-    expect(client.read(5)?.value).toBe(103);
+    assert.strictEqual(client.read(3)?.value, 101);
+    assert.strictEqual(client.read(5)?.value, 103);
   });
 
   test('invalidatePredictedFrom preserves confirmed slots after the boundary', () => {
@@ -325,10 +361,10 @@ describe('Client', () => {
     client.commit(2, { value: 22 });
     client.predict(3, { value: 33 });
     client.invalidatePredictedFrom(1);
-    expect(client.frameStatus(1)).toBe('empty');
-    expect(client.frameStatus(2)).toBe('confirmed');
-    expect(client.read(2)?.value).toBe(22);
-    expect(client.frameStatus(3)).toBe('empty');
+    assert.strictEqual(client.frameStatus(1), 'empty');
+    assert.strictEqual(client.frameStatus(2), 'confirmed');
+    assert.strictEqual(client.read(2)?.value, 22);
+    assert.strictEqual(client.frameStatus(3), 'empty');
   });
 
   test('Capacitor.invalidatePredictedFrom delegates to every client', () => {
@@ -343,8 +379,8 @@ describe('Client', () => {
     b.commit(0, { value: 0 });
     cap.ensurePredicted(3);
     cap.invalidatePredictedFrom(1);
-    expect(a.frameStatus(1)).toBe('empty');
-    expect(b.frameStatus(1)).toBe('empty');
+    assert.strictEqual(a.frameStatus(1), 'empty');
+    assert.strictEqual(b.frameStatus(1), 'empty');
   });
 
   test('resync clears buffered values and re-anchors the same client object', () => {
@@ -356,20 +392,20 @@ describe('Client', () => {
     client.commit(0, { value: 0 });
     client.ensurePredicted(4);
     const corrected = client.commit(2, { value: 20 });
-    expect(corrected.kind).toBe('corrected');
+    assert.strictEqual(corrected.kind, 'corrected');
 
     client.resync(10);
 
-    expect(client.startFrame).toBe(10);
-    expect(client.sizeOffset).toBe(10);
-    expect(client.size).toBe(0);
-    expect(client.read(0)).toBe(null);
-    expect(client.read(4)).toBe(null);
-    expect(client.read(10)).toBe(null);
-    expect(client.consumeDirty()).toBe(null);
-    expect(client.commit(9, { value: 9 }).kind).toBe('stale');
-    expect(client.commit(10, { value: 10 }).kind).toBe('new');
-    expect(client.read(10)?.value).toBe(10);
+    assert.strictEqual(client.startFrame, 10);
+    assert.strictEqual(client.sizeOffset, 10);
+    assert.strictEqual(client.size, 0);
+    assert.strictEqual(client.read(0), null);
+    assert.strictEqual(client.read(4), null);
+    assert.strictEqual(client.read(10), null);
+    assert.strictEqual(client.consumeDirty(), null);
+    assert.strictEqual(client.commit(9, { value: 9 }).kind, 'stale');
+    assert.strictEqual(client.commit(10, { value: 10 }).kind, 'new');
+    assert.strictEqual(client.read(10)?.value, 10);
   });
 
   test('Capacitor.resync preserves client references while clearing all clients', () => {
@@ -381,33 +417,33 @@ describe('Client', () => {
     b.commit(0, { value: 2 });
     cap.resync(7);
 
-    expect(cap.clients.has(a)).toBe(true);
-    expect(cap.clients.has(b)).toBe(true);
-    expect(a.sizeOffset).toBe(7);
-    expect(b.sizeOffset).toBe(7);
-    expect(cap.readConfirmed(7)).toBe(false);
+    assert.strictEqual(cap.clients.has(a), true);
+    assert.strictEqual(cap.clients.has(b), true);
+    assert.strictEqual(a.sizeOffset, 7);
+    assert.strictEqual(b.sizeOffset, 7);
+    assert.strictEqual(cap.readConfirmed(7), false);
 
     a.commit(7, { value: 17 });
     b.commit(7, { value: 27 });
-    expect(cap.readConfirmed(7)).toBe(true);
-    expect(a.cache?.value).toBe(17);
-    expect(b.cache?.value).toBe(27);
+    assert.strictEqual(cap.readConfirmed(7), true);
+    assert.strictEqual(a.cache?.value, 17);
+    assert.strictEqual(b.cache?.value, 27);
   });
 
   test('hasValue reports confirmed and predicted but not empty / out-of-window', () => {
     const cap = new Capacitor<Packet>(compare);
     const client = cap.connect({ startFrame: 5 });
 
-    expect(client.hasValue(4)).toBe(false); // before startFrame
-    expect(client.hasValue(5)).toBe(false); // empty
+    assert.strictEqual(client.hasValue(4), false); // before startFrame
+    assert.strictEqual(client.hasValue(5), false); // empty
     client.commit(5, { value: 5 });
-    expect(client.hasValue(5)).toBe(true);
+    assert.strictEqual(client.hasValue(5), true);
     client.predict(6, { value: 6 });
-    expect(client.hasValue(6)).toBe(true);
+    assert.strictEqual(client.hasValue(6), true);
 
     client.deactivate(7);
     client.commit(7, { value: 7 }); // ignored (inactive)
-    expect(client.hasValue(7)).toBe(false);
+    assert.strictEqual(client.hasValue(7), false);
   });
 
   test('commitIfEmpty fills empty slots and refuses to clobber existing values', () => {
@@ -415,26 +451,26 @@ describe('Client', () => {
     const client = cap.connect({});
 
     // First commitIfEmpty wins, advances the confirmed head.
-    expect(client.commitIfEmpty(0, { value: 0 }).kind).toBe('new');
-    expect(client.frameStatus(0)).toBe('confirmed');
-    expect(client.read(0)?.value).toBe(0);
-    expect(client.size).toBe(1);
+    assert.strictEqual(client.commitIfEmpty(0, { value: 0 }).kind, 'new');
+    assert.strictEqual(client.frameStatus(0), 'confirmed');
+    assert.strictEqual(client.read(0)?.value, 0);
+    assert.strictEqual(client.size, 1);
 
     // A second commitIfEmpty at the same slot is a duplicate even with a
     // different value — the existing confirmed value is preserved.
-    expect(client.commitIfEmpty(0, { value: 99 }).kind).toBe('duplicate');
-    expect(client.read(0)?.value).toBe(0);
+    assert.strictEqual(client.commitIfEmpty(0, { value: 99 }).kind, 'duplicate');
+    assert.strictEqual(client.read(0)?.value, 0);
 
     // commitIfEmpty also refuses to overwrite predictions.
     client.predict(1, { value: 11 });
-    expect(client.commitIfEmpty(1, { value: 22 }).kind).toBe('duplicate');
-    expect(client.frameStatus(1)).toBe('predicted');
-    expect(client.read(1)?.value).toBe(11);
+    assert.strictEqual(client.commitIfEmpty(1, { value: 22 }).kind, 'duplicate');
+    assert.strictEqual(client.frameStatus(1), 'predicted');
+    assert.strictEqual(client.read(1)?.value, 11);
 
     // Window edges report the same kinds as commit.
-    expect(client.commitIfEmpty(-1, { value: -1 }).kind).toBe('stale');
+    assert.strictEqual(client.commitIfEmpty(-1, { value: -1 }).kind, 'stale');
     client.deactivate(5);
-    expect(client.commitIfEmpty(5, { value: 5 }).kind).toBe('inactive');
+    assert.strictEqual(client.commitIfEmpty(5, { value: 5 }).kind, 'inactive');
   });
 
   test('commitIfEmpty advances confirmed head across a contiguous fill', () => {
@@ -444,14 +480,14 @@ describe('Client', () => {
     // Sparse base: leave a gap at frame 1.
     client.commit(0, { value: 0 });
     client.commit(2, { value: 2 });
-    expect(client.confirmedHead).toBe(1);
+    assert.strictEqual(client.confirmedHead, 1);
 
     // commitIfEmpty fills the gap; head walks past the existing confirmed
     // slot at frame 2.
-    expect(client.commitIfEmpty(1, { value: 1 }).kind).toBe('new');
-    expect(client.confirmedHead).toBe(3);
-    expect(client.read(1)?.value).toBe(1);
-    expect(client.read(2)?.value).toBe(2);
+    assert.strictEqual(client.commitIfEmpty(1, { value: 1 }).kind, 'new');
+    assert.strictEqual(client.confirmedHead, 3);
+    assert.strictEqual(client.read(1)?.value, 1);
+    assert.strictEqual(client.read(2)?.value, 2);
   });
 
   test('null-tolerant predictor synthesizes cold-start values', () => {
@@ -462,11 +498,11 @@ describe('Client', () => {
 
     // No prior commit at all — ensurePredicted should still fill.
     client.ensurePredicted(2);
-    expect(client.frameStatus(0)).toBe('predicted');
-    expect(client.frameStatus(1)).toBe('predicted');
-    expect(client.frameStatus(2)).toBe('predicted');
-    expect(client.read(0)?.value).toBe(0);
-    expect(client.read(2)?.value).toBe(0);
+    assert.strictEqual(client.frameStatus(0), 'predicted');
+    assert.strictEqual(client.frameStatus(1), 'predicted');
+    assert.strictEqual(client.frameStatus(2), 'predicted');
+    assert.strictEqual(client.read(0)?.value, 0);
+    assert.strictEqual(client.read(2)?.value, 0);
   });
 
   test('predictor returning null halts prediction without writing the slot', () => {
@@ -474,9 +510,9 @@ describe('Client', () => {
     const client = cap.connect({ predictor: () => null });
 
     client.ensurePredicted(3);
-    expect(client.frameStatus(0)).toBe('empty');
-    expect(client.frameStatus(3)).toBe('empty');
-    expect(client.writtenHead).toBe(0);
+    assert.strictEqual(client.frameStatus(0), 'empty');
+    assert.strictEqual(client.frameStatus(3), 'empty');
+    assert.strictEqual(client.writtenHead, 0);
   });
 });
 
@@ -485,31 +521,32 @@ describe('Capacitor lockstep helpers', () => {
     const cap = new Capacitor<Packet>(compare);
     const client = cap.connect({});
 
-    expect(cap.readConfirmed(0)).toBe(false);
-    expect(client.cache).toBe(null);
+    assert.strictEqual(cap.readConfirmed(0), false);
+    const initialCache = client.cache;
+    assert.strictEqual(initialCache, null);
 
     client.commit(1, { value: 0 });
-    expect(cap.readConfirmed(0)).toBe(false);
+    assert.strictEqual(cap.readConfirmed(0), false);
 
     client.commit(0, { value: 1 });
-    expect(cap.readConfirmed(0)).toBe(true);
-    expect(client.cache?.value).toBe(1);
+    assert.strictEqual(cap.readConfirmed(0), true);
+    assert.strictEqual(client.cache?.value, 1);
 
-    expect(cap.readConfirmed(1)).toBe(true);
-    expect(client.cache?.value).toBe(0);
+    assert.strictEqual(cap.readConfirmed(1), true);
+    assert.strictEqual(client.cache?.value, 0);
 
-    expect(cap.readConfirmed(2)).toBe(false);
+    assert.strictEqual(cap.readConfirmed(2), false);
   });
 
   test('predicted values do not satisfy readConfirmed but do satisfy readDetailed.complete', () => {
     const cap = new Capacitor<Packet>(compare);
     const client = cap.connect({});
     client.predict(0, { value: 9 });
-    expect(cap.readConfirmed(0)).toBe(false);
+    assert.strictEqual(cap.readConfirmed(0), false);
     const detailed = cap.readDetailed(0);
-    expect(detailed.confirmed).toBe(false);
-    expect(detailed.complete).toBe(true);
-    expect(detailed.values[0]?.value).toBe(9);
+    assert.strictEqual(detailed.confirmed, false);
+    assert.strictEqual(detailed.complete, true);
+    assert.strictEqual(detailed.values[0]?.value, 9);
   });
 
   test('resolveFrame predicts and associates values with their clients', () => {
@@ -517,8 +554,8 @@ describe('Capacitor lockstep helpers', () => {
     const client = cap.connect({ predictor: (previous) => previous ?? { value: 0 } });
     const result = cap.resolveFrame(2, { predict: true, maxPredictionLead: 4 });
 
-    expect(result.complete).toBe(true);
-    expect(result.clients).toEqual([
+    assert.strictEqual(result.complete, true);
+    assert.deepStrictEqual(result.clients, [
       { client, status: 'predicted', value: { value: 0 }, active: true },
     ]);
   });
@@ -531,8 +568,8 @@ describe('Capacitor lockstep helpers', () => {
     client.deactivate(1);
 
     const detailed = cap.readDetailed(1);
-    expect(detailed.rollbackFrame).toBe(0);
-    expect(detailed.values).toEqual([null]);
+    assert.strictEqual(detailed.rollbackFrame, 0);
+    assert.deepStrictEqual(detailed.values, [null]);
   });
 
   test('multiple clients with offsets', () => {
@@ -546,9 +583,9 @@ describe('Capacitor lockstep helpers', () => {
     }
 
     for (let i = 10; i < 12; i++) {
-      expect(cap.readConfirmed(i)).toBe(true);
-      expect(client1.cache?.value).toBe(i);
-      expect(client2.cache?.value).toBe(i);
+      assert.strictEqual(cap.readConfirmed(i), true);
+      assert.strictEqual(client1.cache?.value, i);
+      assert.strictEqual(client2.cache?.value, i);
     }
   });
 
@@ -559,14 +596,14 @@ describe('Capacitor lockstep helpers', () => {
 
     client1.commit(0, { value: 10 });
     client2.commit(0, { value: 20 });
-    expect(cap.readConfirmed(0)).toBe(true);
-    expect(client1.cache?.value).toBe(10);
-    expect(client2.cache?.value).toBe(20);
+    assert.strictEqual(cap.readConfirmed(0), true);
+    assert.strictEqual(client1.cache?.value, 10);
+    assert.strictEqual(client2.cache?.value, 20);
 
     client1.commit(1, { value: 11 });
-    expect(cap.readConfirmed(1)).toBe(false);
-    expect(client1.cache).toBe(null);
-    expect(client2.cache).toBe(null);
+    assert.strictEqual(cap.readConfirmed(1), false);
+    assert.strictEqual(client1.cache, null);
+    assert.strictEqual(client2.cache, null);
   });
 
   test('consumeDirty returns the earliest correction across clients and resets', () => {
@@ -577,8 +614,8 @@ describe('Capacitor lockstep helpers', () => {
     c2.predict(3, { value: 0 });
     c1.commit(5, { value: 1 }); // corrected at 5
     c2.commit(3, { value: 1 }); // corrected at 3
-    expect(cap.consumeDirty()).toBe(3);
-    expect(cap.consumeDirty()).toBe(null);
+    assert.strictEqual(cap.consumeDirty(), 3);
+    assert.strictEqual(cap.consumeDirty(), null);
   });
 
   test('disconnect preserves an outstanding correction watermark', () => {
@@ -589,12 +626,12 @@ describe('Capacitor lockstep helpers', () => {
 
     cap.disconnect(client);
 
-    expect(cap.readDetailed(3).rollbackFrame).toBe(3);
-    expect(cap.consumeDirty()).toBe(3);
-    expect(cap.consumeDirty()).toBe(null);
+    assert.strictEqual(cap.readDetailed(3).rollbackFrame, 3);
+    assert.strictEqual(cap.consumeDirty(), 3);
+    assert.strictEqual(cap.consumeDirty(), null);
 
     cap.disconnect(client);
-    expect(cap.consumeDirty()).toBe(null);
+    assert.strictEqual(cap.consumeDirty(), null);
   });
 
   test('size is the lockstep minimum confirmed head', () => {
@@ -603,7 +640,7 @@ describe('Capacitor lockstep helpers', () => {
     const c2 = cap.connect({});
     for (let i = 0; i < 5; i++) c1.commit(i, { value: i });
     for (let i = 0; i < 3; i++) c2.commit(i, { value: i });
-    expect(cap.size()).toBe(3);
+    assert.strictEqual(cap.size(), 3);
   });
 
   test('size ignores a deactivated client confirmed through its end frame', () => {
@@ -614,7 +651,7 @@ describe('Capacitor lockstep helpers', () => {
     for (let i = 0; i < 5; i++) active.commit(i, { value: i });
 
     ended.deactivate(2);
-    expect(cap.size()).toBe(5);
+    assert.strictEqual(cap.size(), 5);
   });
 
   test('size preserves the completed frontier when every client has ended', () => {
@@ -624,7 +661,7 @@ describe('Capacitor lockstep helpers', () => {
     client.commit(1, { value: 1 });
     client.deactivate(2);
 
-    expect(cap.size()).toBe(2);
+    assert.strictEqual(cap.size(), 2);
   });
 
   test('disconnected clients are not considered for size or readConfirmed', () => {
@@ -633,8 +670,8 @@ describe('Capacitor lockstep helpers', () => {
     const c2 = cap.connect({});
     c1.commit(0, { value: 0 });
     cap.disconnect(c2);
-    expect(cap.readConfirmed(0)).toBe(true);
-    expect(cap.size()).toBe(1);
+    assert.strictEqual(cap.readConfirmed(0), true);
+    assert.strictEqual(cap.size(), 1);
   });
 
   test('pendingClients returns exactly the clients blocking readConfirmed', () => {
@@ -645,23 +682,23 @@ describe('Capacitor lockstep helpers', () => {
 
     // Nothing committed yet — every client blocks frame 0; c is also
     // before its startFrame and still blocks.
-    expect(cap.pendingClients(0)).toEqual([a, b, c]);
-    expect(cap.readConfirmed(0)).toBe(false);
+    assert.deepStrictEqual(cap.pendingClients(0), [a, b, c]);
+    assert.strictEqual(cap.readConfirmed(0), false);
 
     a.commit(0, { value: 0 });
-    expect(cap.pendingClients(0)).toEqual([b, c]);
+    assert.deepStrictEqual(cap.pendingClients(0), [b, c]);
 
     b.commit(0, { value: 0 });
     // c is still inactive at frame 0 (startFrame 5), but it blocks
     // lockstep until its window opens.
-    expect(cap.pendingClients(0)).toEqual([c]);
-    expect(cap.readConfirmed(0)).toBe(false);
+    assert.deepStrictEqual(cap.pendingClients(0), [c]);
+    assert.strictEqual(cap.readConfirmed(0), false);
 
     // Predicted values do not satisfy "confirmed": pendingClients still
     // flags them.
     a.predict(1, { value: 1 });
     b.commit(1, { value: 1 });
-    expect(cap.pendingClients(1)).toEqual([a, c]);
+    assert.deepStrictEqual(cap.pendingClients(1), [a, c]);
   });
 
   test('pendingClients skips deactivated clients but includes pre-active ones', () => {
@@ -673,7 +710,7 @@ describe('Capacitor lockstep helpers', () => {
     b.deactivate(0);
 
     // a satisfies frame 0; b was deactivated and is excluded.
-    expect(cap.pendingClients(0)).toEqual([]);
-    expect(cap.readConfirmed(0)).toBe(true);
+    assert.deepStrictEqual(cap.pendingClients(0), []);
+    assert.strictEqual(cap.readConfirmed(0), true);
   });
 });

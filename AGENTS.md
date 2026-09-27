@@ -2,9 +2,9 @@
 
 ## Structure and generated output
 
-Capacitor is a TypeScript rollback/input synchronization package. Source and
-tests live under `src/`; compiled package output under `build/src/` is tracked
-for immutable Git-tag installs, while `build/test/` is disposable. Keep
+Capacitor is a TypeScript rollback/input synchronization package. Source lives
+under `src/` and tests under `test/`; compiled package output under `build/src/`
+is tracked for immutable Git-tag installs, while `build/test/` is disposable. Keep
 transport, authentication, serialization, and game simulation policy outside
 this package.
 
@@ -16,7 +16,7 @@ required; related repositories normally live beside this checkout below
 
 - `npm ci`: install dependencies.
 - `npm run check`: compile, test, lint, and verify formatting.
-- `npm run test`: compile and run the Jest suite.
+- `npm run test`: compile and run the Node.js test suite.
 - `npm run fix`: apply lint and formatting fixes.
 
 After changes that affect emitted code, run `npm run check`, inspect the

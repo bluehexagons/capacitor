@@ -1,3 +1,6 @@
+import assert from 'node:assert/strict';
+import { describe, test } from 'node:test';
+
 import { Client } from '../src/capacitor.js';
 import {
   applyFrameBatch,
@@ -26,8 +29,8 @@ describe('collectFrameBatch', () => {
       maxEntries: 255,
     });
 
-    expect(batch.sentThroughFrame).toBe(12);
-    expect(batch.entries).toEqual([
+    assert.strictEqual(batch.sentThroughFrame, 12);
+    assert.deepStrictEqual(batch.entries, [
       { sourceIndex: 0, frame: 10, frameOffset: 0, value: { player: 7, value: 10 } },
       { sourceIndex: 0, frame: 11, frameOffset: 1, value: { player: 7, value: 11 } },
     ]);
@@ -41,10 +44,10 @@ describe('collectFrameBatch', () => {
       maxEntries: 255,
     });
 
-    expect(batch.entries).toHaveLength(254);
-    expect(batch.sentThroughFrame).toBe(127);
-    expect(batch.entries.filter((entry) => entry.sourceIndex === 0)).toHaveLength(127);
-    expect(batch.entries.filter((entry) => entry.sourceIndex === 1)).toHaveLength(127);
+    assert.strictEqual(batch.entries.length, 254);
+    assert.strictEqual(batch.sentThroughFrame, 127);
+    assert.strictEqual(batch.entries.filter((entry) => entry.sourceIndex === 0).length, 127);
+    assert.strictEqual(batch.entries.filter((entry) => entry.sourceIndex === 1).length, 127);
   });
 
   test('advances shared progress only through the slowest source', () => {
@@ -55,9 +58,9 @@ describe('collectFrameBatch', () => {
       maxEntries: 16,
     });
 
-    expect(batch.sentThroughFrame).toBe(2);
-    expect(batch.entries.filter((entry) => entry.sourceIndex === 0)).toHaveLength(5);
-    expect(batch.entries.filter((entry) => entry.sourceIndex === 1)).toHaveLength(2);
+    assert.strictEqual(batch.sentThroughFrame, 2);
+    assert.strictEqual(batch.entries.filter((entry) => entry.sourceIndex === 0).length, 5);
+    assert.strictEqual(batch.entries.filter((entry) => entry.sourceIndex === 1).length, 2);
   });
 
   test('does not treat frames before a late source starts as discarded history', () => {
@@ -68,18 +71,22 @@ describe('collectFrameBatch', () => {
       maxEntries: 16,
     });
 
-    expect(batch.sentThroughFrame).toBe(5);
+    assert.strictEqual(batch.sentThroughFrame, 5);
   });
 
   test('rejects an entry budget that cannot represent every participating source', () => {
-    expect(() =>
-      collectFrameBatch({
-        sources: Array.from({ length: 300 }, (_, player) => makeSource(player, 1)),
-        originFrame: 0,
-        throughFrame: 1,
-        maxEntries: 255,
-      })
-    ).toThrow('maxEntries must be at least the number of participating sources');
+    assert.throws(
+      () =>
+        collectFrameBatch({
+          sources: Array.from({ length: 300 }, (_, player) => makeSource(player, 1)),
+          originFrame: 0,
+          throughFrame: 1,
+          maxEntries: 255,
+        }),
+      (error) =>
+        error instanceof Error &&
+        error.message.includes('maxEntries must be at least the number of participating sources')
+    );
   });
 
   test('completed sources do not constrain later progress', () => {
@@ -87,14 +94,15 @@ describe('collectFrameBatch', () => {
     ended.commit(0, { player: 1, value: 0 });
     ended.deactivate(1);
 
-    expect(
+    assert.deepStrictEqual(
       collectFrameBatch({
         sources: [ended],
         originFrame: 1,
         throughFrame: 4,
         maxEntries: 1,
-      })
-    ).toEqual({ entries: [], sentThroughFrame: 4 });
+      }),
+      { entries: [], sentThroughFrame: 4 }
+    );
   });
 
   test('respects a transport-specific frame span', () => {
@@ -106,8 +114,11 @@ describe('collectFrameBatch', () => {
       maxFrameSpan: 4,
     });
 
-    expect(batch.entries.map((entry) => entry.frameOffset)).toEqual([0, 1, 2, 3]);
-    expect(batch.sentThroughFrame).toBe(14);
+    assert.deepStrictEqual(
+      batch.entries.map((entry) => entry.frameOffset),
+      [0, 1, 2, 3]
+    );
+    assert.strictEqual(batch.sentThroughFrame, 14);
   });
 
   test('stops progress at a missing value below the confirmed head', () => {
@@ -126,37 +137,54 @@ describe('collectFrameBatch', () => {
       maxEntries: 8,
     });
 
-    expect(batch.entries.map((entry) => entry.frame)).toEqual([5]);
-    expect(batch.sentThroughFrame).toBe(6);
+    assert.deepStrictEqual(
+      batch.entries.map((entry) => entry.frame),
+      [5]
+    );
+    assert.strictEqual(batch.sentThroughFrame, 6);
   });
 
   test('validates collection bounds', () => {
-    expect(() =>
-      collectFrameBatch({ sources: [], originFrame: 2, throughFrame: 1, maxEntries: 1 })
-    ).toThrow('throughFrame must be at or after originFrame');
-    expect(() =>
-      collectFrameBatch({ sources: [], originFrame: 0, throughFrame: 1, maxEntries: 0 })
-    ).toThrow('maxEntries must be a positive safe integer');
-    expect(() =>
-      collectFrameBatch({
-        sources: [
-          { baseFrame: 2, startFrame: 2, confirmedHead: 1, endFrame: Infinity, read: () => null },
-        ],
-        originFrame: 0,
-        throughFrame: 1,
-        maxEntries: 1,
-      })
-    ).toThrow('confirmedHead must be at or after startFrame');
-    expect(() =>
-      collectFrameBatch({
-        sources: [
-          { baseFrame: 2, startFrame: 0, confirmedHead: 1, endFrame: Infinity, read: () => null },
-        ],
-        originFrame: 2,
-        throughFrame: 3,
-        maxEntries: 1,
-      })
-    ).toThrow('confirmedHead must be at or after baseFrame');
+    assert.throws(
+      () => collectFrameBatch({ sources: [], originFrame: 2, throughFrame: 1, maxEntries: 1 }),
+      (error) =>
+        error instanceof Error &&
+        error.message.includes('throughFrame must be at or after originFrame')
+    );
+    assert.throws(
+      () => collectFrameBatch({ sources: [], originFrame: 0, throughFrame: 1, maxEntries: 0 }),
+      (error) =>
+        error instanceof Error &&
+        error.message.includes('maxEntries must be a positive safe integer')
+    );
+    assert.throws(
+      () =>
+        collectFrameBatch({
+          sources: [
+            { baseFrame: 2, startFrame: 2, confirmedHead: 1, endFrame: Infinity, read: () => null },
+          ],
+          originFrame: 0,
+          throughFrame: 1,
+          maxEntries: 1,
+        }),
+      (error) =>
+        error instanceof Error &&
+        error.message.includes('confirmedHead must be at or after startFrame')
+    );
+    assert.throws(
+      () =>
+        collectFrameBatch({
+          sources: [
+            { baseFrame: 2, startFrame: 0, confirmedHead: 1, endFrame: Infinity, read: () => null },
+          ],
+          originFrame: 2,
+          throughFrame: 3,
+          maxEntries: 1,
+        }),
+      (error) =>
+        error instanceof Error &&
+        error.message.includes('confirmedHead must be at or after baseFrame')
+    );
   });
 
   test('fails closed when the requested origin has fallen out of history', () => {
@@ -165,14 +193,16 @@ describe('collectFrameBatch', () => {
       source.commit(frame, { player: 1, value: frame });
     }
 
-    expect(() =>
-      collectFrameBatch({
-        sources: [source],
-        originFrame: 0,
-        throughFrame: 6,
-        maxEntries: 8,
-      })
-    ).toThrow('no longer retains originFrame');
+    assert.throws(
+      () =>
+        collectFrameBatch({
+          sources: [source],
+          originFrame: 0,
+          throughFrame: 6,
+          maxEntries: 8,
+        }),
+      (error) => error instanceof Error && error.message.includes('no longer retains originFrame')
+    );
   });
 });
 
@@ -204,10 +234,13 @@ describe('applyFrameBatch', () => {
       maxFrameLead: 255,
     });
 
-    expect(applied.receivedThroughFrame).toBe(12);
-    expect(applied.acceptedEntries.map((item) => item.localFrame)).toEqual([10, 11]);
-    expect(first.read(10)).toEqual({ player: 1, value: 10 });
-    expect(first.read(11)).toEqual({ player: 1, value: 11 });
+    assert.strictEqual(applied.receivedThroughFrame, 12);
+    assert.deepStrictEqual(
+      applied.acceptedEntries.map((item) => item.localFrame),
+      [10, 11]
+    );
+    assert.deepStrictEqual(first.read(10), { player: 1, value: 10 });
+    assert.deepStrictEqual(first.read(11), { player: 1, value: 11 });
   });
 
   test('classifies unknown, stale, future, invalid, and target-rejected entries', () => {
@@ -233,12 +266,12 @@ describe('applyFrameBatch', () => {
       maxFrameLead: 4,
     });
 
-    expect(applied.unknownTargetEntries).toEqual([entries[0]]);
-    expect(applied.staleEntries).toEqual([entries[1]]);
-    expect(applied.futureEntries).toEqual([entries[2]]);
-    expect(applied.invalidEntries).toEqual([entries[3]]);
-    expect(applied.rejectedEntries).toEqual([entries[4]]);
-    expect(applied.receivedThroughFrame).toBe(10);
+    assert.deepStrictEqual(applied.unknownTargetEntries, [entries[0]]);
+    assert.deepStrictEqual(applied.staleEntries, [entries[1]]);
+    assert.deepStrictEqual(applied.futureEntries, [entries[2]]);
+    assert.deepStrictEqual(applied.invalidEntries, [entries[3]]);
+    assert.deepStrictEqual(applied.rejectedEntries, [entries[4]]);
+    assert.strictEqual(applied.receivedThroughFrame, 10);
   });
 
   test('accepts idempotent duplicates and rollback corrections', () => {
@@ -265,10 +298,10 @@ describe('applyFrameBatch', () => {
       maxFrameLead: 8,
     });
 
-    expect(duplicate.acceptedEntries).toHaveLength(1);
-    expect(correction.acceptedEntries).toHaveLength(1);
-    expect(correction.receivedThroughFrame).toBe(2);
-    expect(target.consumeDirty()).toBe(1);
+    assert.strictEqual(duplicate.acceptedEntries.length, 1);
+    assert.strictEqual(correction.acceptedEntries.length, 1);
+    assert.strictEqual(correction.receivedThroughFrame, 2);
+    assert.strictEqual(target.consumeDirty(), 1);
   });
 
   test('classifies immutable confirmed-input conflicts separately', () => {
@@ -285,12 +318,12 @@ describe('applyFrameBatch', () => {
       maxFrameLead: 8,
     });
 
-    expect(applied.conflictEntries).toEqual([
+    assert.deepStrictEqual(applied.conflictEntries, [
       { entry: entry(1, 0, 2), localFrame: 0, rollbackFrame: 0 },
     ]);
-    expect(applied.acceptedEntries).toEqual([]);
-    expect(applied.rejectedEntries).toEqual([]);
-    expect(target.read(0)).toEqual({ player: 1, value: 1 });
+    assert.deepStrictEqual(applied.acceptedEntries, []);
+    assert.deepStrictEqual(applied.rejectedEntries, []);
+    assert.deepStrictEqual(target.read(0), { player: 1, value: 1 });
   });
 
   test('does not advance across a gap in any target', () => {
@@ -317,9 +350,9 @@ describe('applyFrameBatch', () => {
       maxFrameLead: 8,
     });
 
-    expect(applied.receivedThroughFrame).toBe(11);
-    expect(applied.acceptedEntries).toHaveLength(1);
-    expect(applied.rejectedEntries).toEqual([entry(1, 1, 11), entry(1, 0, 10)]);
+    assert.strictEqual(applied.receivedThroughFrame, 11);
+    assert.strictEqual(applied.acceptedEntries.length, 1);
+    assert.deepStrictEqual(applied.rejectedEntries, [entry(1, 1, 11), entry(1, 0, 10)]);
   });
 
   test('advances across an evicted confirmed prefix and classifies it as stale', () => {
@@ -346,9 +379,9 @@ describe('applyFrameBatch', () => {
       maxFrameLead: 20,
     });
 
-    expect(applied.staleEntries).toEqual([entry(1, 5, 15)]);
-    expect(applied.acceptedEntries).toEqual([{ entry: entry(1, 15, 25), localFrame: 25 }]);
-    expect(applied.receivedThroughFrame).toBe(26);
+    assert.deepStrictEqual(applied.staleEntries, [entry(1, 5, 15)]);
+    assert.deepStrictEqual(applied.acceptedEntries, [{ entry: entry(1, 15, 25), localFrame: 25 }]);
+    assert.strictEqual(applied.receivedThroughFrame, 26);
   });
 
   test('rejects input that would evict unresolved retained history', () => {
@@ -361,9 +394,9 @@ describe('applyFrameBatch', () => {
       maxFrameLead: 8,
     });
 
-    expect(applied.futureEntries).toEqual([entry(1, 4, 4)]);
-    expect(target.baseFrame).toBe(0);
-    expect(applied.receivedThroughFrame).toBe(0);
+    assert.deepStrictEqual(applied.futureEntries, [entry(1, 4, 4)]);
+    assert.strictEqual(target.baseFrame, 0);
+    assert.strictEqual(applied.receivedThroughFrame, 0);
   });
 
   test('recomputes progress for empty batches and ignores completed targets', () => {
@@ -385,18 +418,22 @@ describe('applyFrameBatch', () => {
       maxFrameLead: 8,
     });
 
-    expect(applied.receivedThroughFrame).toBe(2);
+    assert.strictEqual(applied.receivedThroughFrame, 2);
   });
 
   test('validates application coordinates', () => {
-    expect(() =>
-      applyFrameBatch({
-        targets: new Map(),
-        entries: [],
-        originFrame: -1,
-        receivedThroughFrame: 0,
-        maxFrameLead: 0,
-      })
-    ).toThrow('originFrame must be a non-negative safe integer');
+    assert.throws(
+      () =>
+        applyFrameBatch({
+          targets: new Map(),
+          entries: [],
+          originFrame: -1,
+          receivedThroughFrame: 0,
+          maxFrameLead: 0,
+        }),
+      (error) =>
+        error instanceof Error &&
+        error.message.includes('originFrame must be a non-negative safe integer')
+    );
   });
 });

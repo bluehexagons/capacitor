@@ -1,3 +1,6 @@
+import assert from 'node:assert/strict';
+import { describe, test } from 'node:test';
+
 import { RollbackCorrectionQueue, RollbackRing } from '../src/rollback.js';
 
 describe('RollbackRing', () => {
@@ -15,11 +18,11 @@ describe('RollbackRing', () => {
     });
 
     ring.save(2, 10);
-    expect(ring.load(2)).toBe(2);
-    expect(restored).toBe(12);
-    expect(ring.refusalReason(1)).toBe('missing-snapshot');
+    assert.strictEqual(ring.load(2), 2);
+    assert.strictEqual(restored, 12);
+    assert.strictEqual(ring.refusalReason(1), 'missing-snapshot');
     ring.save(5, 20);
-    expect(ring.refusalReason(2)).toBe('out-of-window');
+    assert.strictEqual(ring.refusalReason(2), 'out-of-window');
   });
 
   test('unsafe boundaries take precedence and clear resets metadata', () => {
@@ -30,11 +33,11 @@ describe('RollbackRing', () => {
     });
     ring.save(10);
     ring.markUnsafe(10, 'roster');
-    expect(ring.refusalReason(10)).toBe('unsafe-boundary');
-    expect(ring.unsafeReasons).toEqual(['roster']);
+    assert.strictEqual(ring.refusalReason(10), 'unsafe-boundary');
+    assert.deepStrictEqual(ring.unsafeReasons, ['roster']);
     ring.clear();
-    expect(ring.unsafeSinceFrame).toBe(-1);
-    expect(ring.peek(10)).toBe(null);
+    assert.strictEqual(ring.unsafeSinceFrame, -1);
+    assert.strictEqual(ring.peek(10), null);
   });
 });
 
@@ -42,11 +45,14 @@ describe('RollbackCorrectionQueue', () => {
   test('drains to the earliest correction and retains deferred work', () => {
     const queue = new RollbackCorrectionQueue();
     const frames = [12, 8, 10];
-    expect(queue.consumeEarliest(() => frames.shift() ?? null)).toBe(8);
+    assert.strictEqual(
+      queue.consumeEarliest(() => frames.shift() ?? null),
+      8
+    );
     queue.defer(14);
     queue.defer(11);
-    expect(queue.deferred).toBe(11);
+    assert.strictEqual(queue.deferred, 11);
     queue.clear(() => null);
-    expect(queue.deferred).toBe(null);
+    assert.strictEqual(queue.deferred, null);
   });
 });

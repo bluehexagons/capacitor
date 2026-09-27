@@ -1,38 +1,41 @@
+import assert from 'node:assert/strict';
+import { describe, test } from 'node:test';
+
 import { FrameExchangeProgress } from '../src/frameexchange.js';
 
 describe('FrameExchangeProgress', () => {
   test('tracks send, receive, acknowledgement, and rebase frontiers', () => {
     const progress = new FrameExchangeProgress(10);
-    expect(progress.needsFrames(11)).toBe(true);
-    expect(progress.markSent(14)).toBe(true);
-    expect(progress.selectSendOrigin(2)).toBe(12);
-    expect(progress.acceptAcknowledgement(13, 20)).toBe('advanced');
-    expect(progress.acceptAcknowledgement(13, 20)).toBe('duplicate');
-    expect(progress.acceptAcknowledgement(30, 20)).toBe('impossible');
+    assert.strictEqual(progress.needsFrames(11), true);
+    assert.strictEqual(progress.markSent(14), true);
+    assert.strictEqual(progress.selectSendOrigin(2), 12);
+    assert.strictEqual(progress.acceptAcknowledgement(13, 20), 'advanced');
+    assert.strictEqual(progress.acceptAcknowledgement(13, 20), 'duplicate');
+    assert.strictEqual(progress.acceptAcknowledgement(30, 20), 'impossible');
     progress.rewindSendToAcknowledged(1);
-    expect(progress.sentThroughFrame).toBe(12);
+    assert.strictEqual(progress.sentThroughFrame, 12);
 
     progress.markReceived(12);
-    expect(progress.needsAcknowledgement()).toBe(true);
-    expect(progress.markAcknowledgementSent(11)).toBe(true);
-    expect(progress.needsAcknowledgement()).toBe(true);
+    assert.strictEqual(progress.needsAcknowledgement(), true);
+    assert.strictEqual(progress.markAcknowledgementSent(11), true);
+    assert.strictEqual(progress.needsAcknowledgement(), true);
     progress.markReceived(14);
     const revision = progress.revision;
-    expect(progress.markAcknowledgementSent(12, revision)).toBe(true);
-    expect(progress.lastAcknowledgedThroughFrame).toBe(12);
-    expect(progress.markAcknowledgementSent(14)).toBe(true);
-    expect(progress.needsAcknowledgement()).toBe(false);
-    expect(progress.markAcknowledgementSent(15)).toBe(false);
+    assert.strictEqual(progress.markAcknowledgementSent(12, revision), true);
+    assert.strictEqual(progress.lastAcknowledgedThroughFrame, 12);
+    assert.strictEqual(progress.markAcknowledgementSent(14), true);
+    assert.strictEqual(progress.needsAcknowledgement(), false);
+    assert.strictEqual(progress.markAcknowledgementSent(15), false);
 
     progress.rebase(100);
-    expect(progress).toMatchObject({
+    assert.partialDeepStrictEqual(progress, {
       originFrame: 100,
       sentThroughFrame: 100,
       acknowledgedThroughFrame: 100,
       receivedThroughFrame: 100,
       lastAcknowledgedThroughFrame: 100,
     });
-    expect(progress.markSent(14, revision)).toBe(false);
-    expect(progress.markAcknowledgementSent(14, revision)).toBe(false);
+    assert.strictEqual(progress.markSent(14, revision), false);
+    assert.strictEqual(progress.markAcknowledgementSent(14, revision), false);
   });
 });

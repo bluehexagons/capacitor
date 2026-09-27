@@ -10,7 +10,7 @@ this package.
 
 ## Environment and commands
 
-The standard Linux host is an infra-tools-managed agent VM. Node 24+ is
+The standard Linux host is a Basaltwater-managed agent VM. Node 24+ is
 required; related repositories normally live beside this checkout below
 `~/repos`.
 

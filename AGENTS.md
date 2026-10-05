@@ -10,13 +10,19 @@ this package.
 
 ## Environment and commands
 
-The standard Linux host is a Basaltwater-managed agent VM. Node 24+ is
-required; related repositories normally live beside this checkout below
-`~/repos`.
+Linux development supports Basaltwater-managed CachyOS workstations and Debian
+hosts. Node 24+ is required. Keep primary checkouts beside one another under
+`~/repos` or the configured `--agent-workspace` root; locate primary checkouts
+with `git worktree list` when using isolated worktrees. See Antistatic's
+[workspace guide](https://github.com/bluehexagons/antistatic/blob/main/docs/sister-repositories.md).
+Use the actual OS's Basaltwater guidance for host diagnosis; package validation
+and CI work independently of Basaltwater or sibling source checkouts.
 
 Select `.nvmrc` with `nvm use` before npm commands. On Basaltwater,
 `basaltw node exec -- npm run check` selects the project runtime without
-changing the host default; `basaltw node install` installs a missing pin.
+changing the host default; `basaltw node install` installs a missing pin and
+prepares NVM on demand on CachyOS. Ordinary NVM or compatible system Node also
+works. Install locked dependencies independently in each checkout/worktree.
 
 - `npm ci`: install dependencies.
 - `npm run check`: compile, test, lint, and verify formatting.

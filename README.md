@@ -120,9 +120,21 @@ Batching invariants:
 ## Development
 
 ```bash
-npm install
+npm ci
 npm run check
 ```
+
+`npm test` compiles before running the Node test suite. Test files run with at
+most two workers and a ten-second test timeout. For a focused rerun after
+compiling, put Node test options before the compiled file path:
+
+```bash
+node --test --test-timeout=10000 --test-name-pattern='Rollback' build/test/rollback.test.js
+```
+
+The default reporter includes names and failure context. Use Node's `junit`
+reporter with `--test-reporter-destination=local-artifacts/tests.xml` when a
+machine-readable report is needed.
 
 Checked-in output under `build/src` supports Git-tag installs. See
 [CHANGELOG.md](CHANGELOG.md) for release history. Releases update both lockfile

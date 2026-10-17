@@ -40,7 +40,7 @@
     }
   },
   "scripts": {
-    "test": "node --test \"build/test/*.test.js\"",
+    "test": "node --test --test-concurrency=2 --test-timeout=10000 \"build/test/*.test.js\"",
     "lint": "oxlint .",
     "format": "oxfmt --write .",
     "format:check": "oxfmt --check .",

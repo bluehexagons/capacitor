@@ -119,6 +119,10 @@ Batching invariants:
 
 ## Development
 
+In VS Code, install the recommended [TypeScript 7 extension](https://marketplace.visualstudio.com/items?itemName=TypeScriptTeam.native-preview).
+The workspace settings enable its native language service using the installed
+`typescript` package; TypeScript 7 no longer includes `lib/tsserver.js`.
+
 ```bash
 npm ci
 npm run check

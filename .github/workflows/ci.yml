@@ -28,4 +28,9 @@ jobs:
         run: npm run check
 
       - name: Verify generated build output
-        run: git diff --exit-code -- build/src
+        run: |
+          changes="$(git status --porcelain --untracked-files=all -- build/src)"
+          if [ -n "$changes" ]; then
+            printf 'Generated build output differs from the checkout:\n%s\n' "$changes"
+            exit 1
+          fi

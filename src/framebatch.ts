@@ -121,7 +121,11 @@ export const collectFrameBatch = <V>({
     ) {
       throw new Error(`sources[${sourceIndex}] no longer retains originFrame`);
     }
-    if (source.startFrame < throughFrame && source.endFrame > originFrame) {
+    if (
+      source.startFrame < source.endFrame &&
+      source.startFrame < throughFrame &&
+      source.endFrame > originFrame
+    ) {
       participatingSources++;
     }
   }

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.4
+
+- Ignore empty participation intervals when sharing the frame-batch entry budget.
+
 ## 0.7.3
 
 - Invalidate reused rollback snapshots before capture so a failed capture cannot

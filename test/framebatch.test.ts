@@ -105,6 +105,28 @@ describe('collectFrameBatch', () => {
     );
   });
 
+  test('empty late joiners do not consume the participating-source budget', () => {
+    const empty = Array.from({ length: 2 }, () => {
+      const source = new Client<Input>({ startFrame: 5 });
+      source.deactivate(5);
+      return source;
+    });
+    assert.deepStrictEqual(
+      collectFrameBatch({ sources: empty, originFrame: 0, throughFrame: 10, maxEntries: 1 }),
+      { entries: [], sentThroughFrame: 10 }
+    );
+    const batch = collectFrameBatch({
+      sources: [...empty, makeSource(3, 10)],
+      originFrame: 0,
+      throughFrame: 10,
+      maxEntries: 1,
+    });
+    assert.strictEqual(batch.sentThroughFrame, 1);
+    assert.deepStrictEqual(batch.entries, [
+      { sourceIndex: 2, frame: 0, frameOffset: 0, value: { player: 3, value: 0 } },
+    ]);
+  });
+
   test('respects a transport-specific frame span', () => {
     const batch = collectFrameBatch({
       sources: [makeSource(1, 20)],

@@ -22,6 +22,7 @@ export class RollbackRing {
     save(frame, ...args) {
         this.assertFrame(frame);
         const slot = this.slotIndex(frame);
+        this.occupied[slot] = -1;
         this.saveSnapshot(this.slots[slot], frame, ...args);
         this.occupied[slot] = frame;
     }

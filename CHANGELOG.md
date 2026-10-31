@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.3
+
+- Invalidate reused rollback snapshots before capture so a failed capture cannot
+  expose partially overwritten state as an older frame.
+
 ## 0.7.2
 
 - Preserve unsent frame and acknowledgment work until the transport confirms

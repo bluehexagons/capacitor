@@ -56,3 +56,31 @@ describe('RollbackCorrectionQueue', () => {
     assert.strictEqual(queue.deferred, null);
   });
 });
+
+test('failed capture invalidates the reused slot and permits retry', () => {
+  let fail = false;
+  let restored = -1;
+  const ring = new RollbackRing({
+    window: 2,
+    createSnapshot: () => ({ value: -1 }),
+    saveSnapshot: (snapshot, frame) => {
+      snapshot.value = frame;
+      if (fail) throw new Error('capture failed');
+    },
+    loadSnapshot: (snapshot) => {
+      restored = snapshot.value;
+    },
+  });
+  ring.save(0);
+  fail = true;
+  assert.throws(() => ring.save(2), /capture failed/);
+  for (const frame of [0, 2]) {
+    assert.strictEqual(ring.load(frame), -1);
+    assert.strictEqual(ring.peek(frame), null);
+  }
+  assert.strictEqual(restored, -1);
+  fail = false;
+  ring.save(2);
+  assert.strictEqual(ring.load(2), 2);
+  assert.strictEqual(restored, 2);
+});

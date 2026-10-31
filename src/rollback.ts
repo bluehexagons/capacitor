@@ -43,6 +43,8 @@ export class RollbackRing<Snapshot, UnsafeReason = string, SaveArgs extends unkn
   save(frame: number, ...args: SaveArgs): void {
     this.assertFrame(frame);
     const slot = this.slotIndex(frame);
+    // Capture may mutate a reused snapshot before throwing.
+    this.occupied[slot] = -1;
     this.saveSnapshot(this.slots[slot], frame, ...args);
     this.occupied[slot] = frame;
   }

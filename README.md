@@ -9,7 +9,7 @@ and simulation policy.
 ## Install
 
 ```bash
-npm install https://codeload.github.com/bluehexagons/capacitor/tar.gz/refs/tags/v0.7.2
+npm install https://codeload.github.com/bluehexagons/capacitor/tar.gz/refs/tags/v0.7.4
 ```
 
 The supported Node.js runtime is 24 or newer. Runtime modules use ordinary
